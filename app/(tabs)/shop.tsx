@@ -3,13 +3,21 @@ import { View, StyleSheet, SectionList, Alert, ScrollView } from 'react-native';
 import { Text, Checkbox, Button, FAB, IconButton, ActivityIndicator, Portal, Modal, TouchableRipple } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const CACHE_KEY = 'SHOPPING_LIST_CACHE';
 
 export default function ShoppingScreen() {
   const [sections, setSections] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false); // <--- New State for Refreshing
+  
+  // General Loading (Network)
+  const [loading, setLoading] = useState(true); 
+  const [refreshing, setRefreshing] = useState(false);
+  
+  // Specific Action Loaders
+  const [isImporting, setIsImporting] = useState(false); 
+  const [isClearing, setIsClearing] = useState(false);   
   
   const [fabOpen, setFabOpen] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -17,18 +25,27 @@ export default function ShoppingScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchList();
+      loadCacheAndFetch();
     }, [])
   );
 
-  const fetchList = async () => {
-    // Only show big loader if NOT refreshing (prevent double spinners)
-    if (!refreshing) setLoading(true);
-    
+  const loadCacheAndFetch = async () => {
+    try {
+      const cached = await AsyncStorage.getItem(CACHE_KEY);
+      if (cached) {
+        setSections(JSON.parse(cached));
+        setLoading(false); 
+      }
+    } catch (e) { console.log(e); }
+
+    await fetchFromSupabase();
+  };
+
+  const fetchFromSupabase = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('shopping_list')
       .select('*')
       .eq('user_id', user.id)
@@ -37,7 +54,6 @@ export default function ShoppingScreen() {
 
     if (data) {
       const grouped: any = {};
-      
       data.forEach(row => {
         const header = row.dish_name || 'General Items';
         if (!grouped[header]) grouped[header] = [];
@@ -50,21 +66,36 @@ export default function ShoppingScreen() {
       }));
       
       setSections(sectionArray);
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(sectionArray));
     }
     setLoading(false);
   };
 
-  // --- PULL TO REFRESH FUNCTION ---
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchList();
+    await fetchFromSupabase();
     setRefreshing(false);
   };
 
+  const confirmImportWeek = () => {
+    Alert.alert(
+      "Import Full Week",
+      "Are you sure you want to add ingredients for the entire week?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Yes, Import All", onPress: () => importIngredients(null) }
+      ]
+    );
+  };
+
   const importIngredients = async (specificDay: string | null = null) => {
-    setLoading(true);
+    setIsImporting(true); 
+    
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+        setIsImporting(false);
+        return;
+    }
 
     let query = supabase
       .from('weekly_plan')
@@ -79,7 +110,7 @@ export default function ShoppingScreen() {
 
     if (error || !planData || planData.length === 0) {
       Alert.alert("Nothing Found", specificDay ? `No meals for ${specificDay}.` : "Plan is empty.");
-      setLoading(false);
+      setIsImporting(false);
       setModalVisible(false);
       return;
     }
@@ -91,7 +122,6 @@ export default function ShoppingScreen() {
       const rawIngredients = row.dishes?.ingredients || "";
 
       if (rawIngredients) {
-        // FIX: Explicitly tell TypeScript these are strings
         const parts: string[] = rawIngredients.split(/[\n,]/).map((i: string) => i.trim()).filter((i: string) => i.length > 0);
         const uniqueParts = [...new Set(parts)];
 
@@ -106,57 +136,56 @@ export default function ShoppingScreen() {
       }
     });
 
-    if (rowsToInsert.length === 0) {
-      Alert.alert("Info", "Dishes found, but no ingredients listed.");
-    } else {
+    if (rowsToInsert.length > 0) {
       const { error: insertError } = await supabase.from('shopping_list').insert(rowsToInsert);
       if (insertError) Alert.alert("Error", insertError.message);
       else {
-        fetchList();
-        Alert.alert("Success", `Added items from ${specificDay || "Weekly Plan"}.`);
+        await fetchFromSupabase();
+        const msg = specificDay 
+            ? `Added items for ${specificDay}.` 
+            : `Added ${rowsToInsert.length} items from your Weekly Plan.`;
+        Alert.alert("Success", msg);
       }
+    } else {
+        Alert.alert("Info", "Dishes found, but no ingredients listed.");
     }
 
-    setLoading(false);
+    setIsImporting(false);
     setModalVisible(false);
     setSelectedDayToImport(null);
   };
 
   const toggleItem = async (id: number, currentStatus: boolean) => {
-    // 1. OPTIMISTIC UPDATE (Instant)
-    setSections(prevSections => {
-      return prevSections.map(section => ({
-        ...section,
-        data: section.data.map((item: any) => 
-          item.id === id 
-            ? { ...item, is_bought: !currentStatus } 
-            : item
-        )
-      }));
-    });
+    const newSections = sections.map(section => ({
+      ...section,
+      data: section.data.map((item: any) => 
+        item.id === id ? { ...item, is_bought: !currentStatus } : item
+      )
+    }));
 
-    // 2. Background Save
+    setSections(newSections);
+    AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newSections));
+
     const { error } = await supabase
       .from('shopping_list')
       .update({ is_bought: !currentStatus })
       .eq('id', id);
 
-    if (error) {
-      console.error("Update failed:", error);
-      fetchList(); // Revert on error
-    }
+    if (error) fetchFromSupabase();
   };
 
   const clearList = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    
     Alert.alert("Clear List", "Delete everything?", [
         { text: "Cancel" },
         { text: "Delete All", style: 'destructive', onPress: async () => {
-            setLoading(true);
+            setIsClearing(true); 
             await supabase.from('shopping_list').delete().eq('user_id', user.id);
-            fetchList();
-            setLoading(false);
+            setSections([]); 
+            AsyncStorage.removeItem(CACHE_KEY); 
+            setIsClearing(false); 
         }}
     ]);
   };
@@ -167,26 +196,41 @@ export default function ShoppingScreen() {
     }
   };
 
+  // LOGIC FIX:
+  // Show Main Spinner IF:
+  // 1. Initial Loading
+  // 2. Importing (AND Modal is closed = Full Week Import)
+  // EXCLUDED: isClearing (Delete) - because we use the top-right spinner for that.
+  const showMainSpinner = (loading || (isImporting && !modalVisible)) && !refreshing;
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
         <Text variant="headlineMedium" style={{fontWeight:'bold'}}>Shopping List</Text>
-        <IconButton icon="delete-outline" iconColor="red" onPress={clearList} />
+        
+        {/* DELETE LOADER: Top Right Only */}
+        {isClearing ? (
+            <ActivityIndicator animating={true} color="red" size="small" />
+        ) : (
+            <IconButton icon="delete-outline" iconColor="red" onPress={clearList} />
+        )}
       </View>
 
-      {/* Main Spinner (Initial Load Only) */}
-      {loading && !refreshing && <ActivityIndicator animating={true} style={{marginBottom: 10}} />}
+      {/* MAIN SPINNER: Only for Imports or Initial Load */}
+      {showMainSpinner && (
+        <View style={{paddingVertical: 10}}>
+            <ActivityIndicator animating={true} size="large" color="#6200ee" />
+            {isImporting && <Text style={{textAlign:'center', marginTop:5, color:'#6200ee'}}>Importing items...</Text>}
+        </View>
+      )}
 
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id.toString()}
         contentContainerStyle={{ paddingBottom: 100 }}
-        
-        // --- ADDED REFRESH PROPS ---
         refreshing={refreshing}
         onRefresh={onRefresh}
-        // ---------------------------
-
+        
         renderSectionHeader={({ section: { title } }) => (
             <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>{title}</Text>
@@ -211,18 +255,18 @@ export default function ShoppingScreen() {
         )}
         
         ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={{color: 'gray'}}>List is empty.</Text>
-            <Text style={{color: 'gray', fontSize: 12}}>Import from your plan to get started.</Text>
-          </View>
+          !showMainSpinner ? (
+            <View style={styles.emptyContainer}>
+                <Text style={{color: 'gray'}}>List is empty.</Text>
+                <Text style={{color: 'gray', fontSize: 12}}>Import from your plan to get started.</Text>
+            </View>
+          ) : null
         }
       />
 
-      {/* --- DAY PICKER MODAL --- */}
       <Portal>
         <Modal visible={modalVisible} onDismiss={() => setModalVisible(false)} contentContainerStyle={styles.modal}>
           <Text variant="titleLarge" style={{marginBottom: 15, textAlign:'center'}}>Select a Day</Text>
-          
           <ScrollView style={{maxHeight: 300}}>
             {DAYS.map(day => (
                 <TouchableRipple 
@@ -242,15 +286,16 @@ export default function ShoppingScreen() {
                 </TouchableRipple>
             ))}
           </ScrollView>
-          
           <View style={{flexDirection:'row', justifyContent:'flex-end', marginTop: 20}}>
-            <Button onPress={() => setModalVisible(false)} style={{marginRight: 10}}>Cancel</Button>
+            <Button onPress={() => setModalVisible(false)} style={{marginRight: 10}} disabled={isImporting}>Cancel</Button>
+            
             <Button 
                 mode="contained" 
-                onPress={handleDayConfirm}
-                disabled={!selectedDayToImport}
+                onPress={handleDayConfirm} 
+                disabled={!selectedDayToImport || isImporting}
+                loading={isImporting} 
             >
-                Import Items
+                {isImporting ? "Importing..." : "Import Items"}
             </Button>
           </View>
         </Modal>
@@ -263,7 +308,7 @@ export default function ShoppingScreen() {
         actions={[
           { icon: 'delete', label: 'Clear List', onPress: clearList, style: { backgroundColor: '#ffebee' }, color: 'red' },
           { icon: 'calendar-today', label: 'Import Specific Day', onPress: () => setModalVisible(true) },
-          { icon: 'calendar-week', label: 'Import Full Week', onPress: () => importIngredients(null) },
+          { icon: 'calendar-week', label: 'Import Full Week', onPress: confirmImportWeek },
         ]}
         onStateChange={({ open }) => setFabOpen(open)}
       />
