@@ -10,6 +10,9 @@ export default function DeckScreen() {
   const [dishes, setDishes] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
+  // NEW: Logout Loading State
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Quick Suggest State
   const [quickType, setQuickType] = useState('Lunch');
@@ -45,14 +48,15 @@ export default function DeckScreen() {
   };
 
   const handleLogout = async () => {
-    // 1. Sign out from database
+    setIsLoggingOut(true); // 1. Start Spinner
+    
     const { error } = await supabase.auth.signOut();
     
     if (error) {
       Alert.alert("Error", error.message);
+      setIsLoggingOut(false); // Stop if failed
     } else {
-      // 2. FORCE navigation to Login screen (Route '/')
-      // This ensures you don't stay stuck on the Home screen
+      // 2. Force navigation to Login (Root)
       router.replace('/'); 
     }
   };
@@ -91,7 +95,6 @@ export default function DeckScreen() {
     );
   };
 
-  // Helper to get image URL for the suggestion card
   const getSuggestionImage = () => {
     if (!suggestion || !suggestion.image_path) return 'https://via.placeholder.com/150';
     return suggestion.image_path.trim().replace(/ /g, '%20');
@@ -101,9 +104,15 @@ export default function DeckScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text variant="headlineMedium" style={styles.title}>My Kitchen</Text>
-        <TouchableOpacity onPress={handleLogout}>
-            <Text style={{color: 'red', fontWeight: 'bold'}}>Log Out</Text>
-        </TouchableOpacity>
+        
+        {/* LOGOUT BUTTON with Loading State */}
+        {isLoggingOut ? (
+            <ActivityIndicator animating={true} color="red" size="small" />
+        ) : (
+            <TouchableOpacity onPress={handleLogout}>
+                <Text style={{color: 'red', fontWeight: 'bold'}}>Log Out</Text>
+            </TouchableOpacity>
+        )}
       </View>
 
       {/* --- QUICK SUGGEST SECTION --- */}
@@ -133,7 +142,6 @@ export default function DeckScreen() {
         ) : (
             <Card style={styles.resultCard} onPress={() => router.push({ pathname: '/dish/[id]', params: { id: suggestion.id } })}>
                 <View style={styles.resultContent}>
-                    {/* NEW: Show Image Here */}
                     <Image 
                         source={{ uri: getSuggestionImage() }} 
                         style={styles.resultImage} 
@@ -202,7 +210,7 @@ const styles = StyleSheet.create({
   
   resultCard: { backgroundColor: '#ede7f6', marginTop: 5 },
   resultContent: { flexDirection: 'row', alignItems: 'center', padding: 10 },
-  resultImage: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#ddd' }, // Style for the result image
+  resultImage: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#ddd' }, 
 
   row: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: 'white' },
   thumbnail: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#f0f0f0' },
