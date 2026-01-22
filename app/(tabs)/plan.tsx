@@ -15,9 +15,7 @@ export default function PlanScreen() {
   const [activeIndex, setActiveIndex] = useState(0);
   const [plans, setPlans] = useState<any>({ Breakfast: {}, Lunch: {}, Dinner: {} });
   
-  // 'loading' = Initial app start (we try to hide this with cache)
   const [loading, setLoading] = useState(true); 
-  // 'isShuffling' = Explicit user action (we WANT to show spinner)
   const [isShuffling, setIsShuffling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -31,7 +29,6 @@ export default function PlanScreen() {
   );
 
   const loadCacheAndFetch = async () => {
-    // 1. Try Cache First (Instant)
     try {
       const cachedData = await AsyncStorage.getItem(CACHE_KEY);
       if (cachedData) {
@@ -40,7 +37,6 @@ export default function PlanScreen() {
       }
     } catch (e) { console.log(e); }
 
-    // 2. Then Fetch Fresh Data
     await fetchFromSupabase();
   };
 
@@ -61,7 +57,6 @@ export default function PlanScreen() {
         }
       });
       setPlans(newPlans);
-      // Update Cache silently
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newPlans));
     }
     setLoading(false);
@@ -69,14 +64,11 @@ export default function PlanScreen() {
 
   const handleShuffle = async () => {
     const currentType = MEAL_TYPES[activeIndex];
-    
-    // 1. TRIGGER LOADING SCREEN
     setIsShuffling(true); 
     
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 2. Get Candidates
     const { data: candidates } = await supabase
       .from('dishes')
       .select('id')
@@ -89,7 +81,6 @@ export default function PlanScreen() {
       return;
     }
 
-    // 3. Generate New Plan Logic
     const newRows = DAYS.map(day => ({
       user_id: user.id,
       day: day,
@@ -97,13 +88,9 @@ export default function PlanScreen() {
       dish_id: candidates[Math.floor(Math.random() * candidates.length)].id
     }));
 
-    // 4. Save to DB
     await supabase.from('weekly_plan').upsert(newRows, { onConflict: 'user_id, day, meal_type' });
-    
-    // 5. Fetch New Data (Updated DB -> State -> Cache)
     await fetchFromSupabase();
     
-    // 6. HIDE LOADING SCREEN
     setIsShuffling(false);
   };
 
@@ -165,10 +152,6 @@ export default function PlanScreen() {
     );
   };
 
-  // --- DECISION: SHOW LOADING OR LIST? ---
-  // If explicitly shuffling -> SHOW SPINNER
-  // If initial load AND no cache -> SHOW SPINNER
-  // Else -> SHOW LIST
   const shouldShowSpinner = isShuffling || (loading && Object.keys(plans.Lunch).length === 0);
 
   return (
@@ -189,40 +172,54 @@ export default function PlanScreen() {
         ))}
       </View>
 
-      {shouldShowSpinner ? (
-        <ActivityIndicator animating={true} size="large" style={{ marginTop: 100 }} />
-      ) : (
-        <FlatList
-            ref={flatListRef}
-            data={MEAL_TYPES}
-            horizontal
-            pagingEnabled
-            showsHorizontalScrollIndicator={false}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-            keyExtractor={(item) => item}
-            renderItem={({ item: type }) => (
-            <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 15 }}>
-                <FlatList 
-                    data={DAYS}
-                    keyExtractor={day => day}
-                    contentContainerStyle={{ paddingBottom: 100 }}
-                    showsVerticalScrollIndicator={false}
-                    refreshing={refreshing}
-                    onRefresh={onRefresh}
-                    renderItem={({ item: day }) => renderDayRow(day, type)}
-                />
+      <View style={{ flex: 1 }}>
+        {/* LOGIC FIX: The List is always present (so it keeps its scroll position),
+            but we turn its Opacity to 0 when loading. This makes it invisible but
+            keeps the layout intact.
+        */}
+        <View style={{ flex: 1, opacity: shouldShowSpinner ? 0 : 1 }}>
+            <FlatList
+                ref={flatListRef}
+                data={MEAL_TYPES}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                onScroll={handleScroll}
+                scrollEventThrottle={16}
+                keyExtractor={(item) => item}
+                getItemLayout={(data, index) => (
+                    {length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index}
+                )}
+                renderItem={({ item: type }) => (
+                    <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 15 }}>
+                        <FlatList 
+                            data={DAYS}
+                            keyExtractor={day => day}
+                            contentContainerStyle={{ paddingBottom: 100 }}
+                            showsVerticalScrollIndicator={false}
+                            refreshing={refreshing}
+                            onRefresh={onRefresh}
+                            renderItem={({ item: day }) => renderDayRow(day, type)}
+                        />
+                    </View>
+                )}
+            />
+        </View>
+
+        {/* SPINNER: Absolute Center. Only visible when loading. */}
+        {shouldShowSpinner && (
+            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
+                <ActivityIndicator animating={true} size="large" color="#6200ee" />
             </View>
-            )}
-        />
-      )}
+        )}
+      </View>
 
       <FAB
         icon="shuffle"
         label="Shuffle"
         style={styles.fab}
         onPress={handleShuffle}
-        disabled={isShuffling} // Prevent double taps
+        disabled={isShuffling} 
       />
     </View>
   );
