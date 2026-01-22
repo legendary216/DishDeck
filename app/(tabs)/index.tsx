@@ -1,6 +1,6 @@
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet, FlatList, Alert, Image, TouchableOpacity } from 'react-native';
-import { Text, FAB, ActivityIndicator, Divider, Chip, Button, Card, IconButton } from 'react-native-paper';
+import { Text, FAB, ActivityIndicator, Divider, Chip, Button, Card, IconButton, Searchbar } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -14,6 +14,9 @@ export default function DeckScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Quick Suggest State
   const [quickType, setQuickType] = useState('Lunch');
@@ -73,7 +76,9 @@ export default function DeckScreen() {
     }
   };
 
+  // --- UPDATED LOGIC: NEVER SHOW SAME DISH TWICE ---
   const handleQuickSuggest = () => {
+    // 1. Get all valid candidates for this meal type
     const candidates = dishes.filter(d => 
         d.type && d.type.toLowerCase().includes(quickType.toLowerCase())
     );
@@ -84,9 +89,27 @@ export default function DeckScreen() {
         return;
     }
 
-    const randomDish = candidates[Math.floor(Math.random() * candidates.length)];
+    // 2. If we only have 1 dish, we have to show it (we can't switch)
+    if (candidates.length === 1) {
+        setSuggestion(candidates[0]);
+        return;
+    }
+
+    // 3. If we have multiple, filter out the CURRENT suggestion
+    let pool = candidates;
+    if (suggestion) {
+        pool = candidates.filter(d => d.id !== suggestion.id);
+    }
+
+    // 4. Pick from the new pool (which guarantees a change)
+    const randomDish = pool[Math.floor(Math.random() * pool.length)];
     setSuggestion(randomDish);
   };
+
+  const filteredDishes = dishes.filter(item => {
+    const q = searchQuery.toLowerCase();
+    return item.name.toLowerCase().includes(q) || item.type.toLowerCase().includes(q);
+  });
 
   const renderDishRow = ({ item }: { item: any }) => {
     const rawUrl = item.image_path || '';
@@ -126,7 +149,6 @@ export default function DeckScreen() {
         )}
       </View>
 
-      {/* --- QUICK SUGGEST SECTION --- */}
       <View style={styles.suggestContainer}>
         <Text variant="titleLarge" style={{marginBottom: 12, fontWeight:'bold', color:'#333'}}>
             Quick Decide 🎲
@@ -137,7 +159,10 @@ export default function DeckScreen() {
                 <Chip 
                     key={type} 
                     selected={quickType === type} 
-                    onPress={() => setQuickType(type)}
+                    onPress={() => {
+                        setQuickType(type);
+                        setSuggestion(null); // Reset when changing category
+                    }}
                     style={styles.chip}
                     textStyle={{ fontSize: 14 }}
                     showSelectedOverlay
@@ -158,7 +183,6 @@ export default function DeckScreen() {
                 Pick for Me
             </Button>
         ) : (
-            // DISABLED ONPRESS: Just a view card now.
             <Card style={styles.resultCard}>
                 <View style={styles.resultContent}>
                     <Image 
@@ -175,7 +199,6 @@ export default function DeckScreen() {
                         </Text>
                     </View>
                     
-                    {/* RELOAD ICON: This is the only interactive part */}
                     <IconButton 
                         icon="refresh" 
                         iconColor="#6200ee" 
@@ -187,17 +210,24 @@ export default function DeckScreen() {
         )}
       </View>
       
-      {/* SEPARATOR WITH TEXT */}
       <View style={styles.listHeaderContainer}>
-        <Text style={styles.listHeaderText}>Here is your list OF DISHES📜</Text>
+        <Searchbar
+            placeholder="Search your dishes..."
+            onChangeText={setSearchQuery}
+            value={searchQuery}
+            style={styles.searchBar}
+            inputStyle={{minHeight: 0}} 
+        />
+        <Text style={styles.listHeaderText}>
+             {searchQuery ? `Searching for "${searchQuery}"` : "Here is your list 📜"}
+        </Text>
       </View>
 
-      {/* --- MAIN LIST --- */}
       {loading && !refreshing && dishes.length === 0 ? (
         <ActivityIndicator animating={true} size="large" style={{marginTop: 50}} />
       ) : (
         <FlatList
-            data={dishes}
+            data={filteredDishes} 
             keyExtractor={(item) => item.id.toString()}
             contentContainerStyle={{ paddingBottom: 100 }}
             refreshing={refreshing}
@@ -205,8 +235,14 @@ export default function DeckScreen() {
             ItemSeparatorComponent={() => <Divider />}
             ListEmptyComponent={
             <View style={styles.emptyContainer}>
-                <Text style={{fontSize: 50, marginBottom: 10}}>🍲</Text>
-                <Text style={{color: 'gray'}}>No dishes yet.</Text>
+                {searchQuery ? (
+                    <Text style={{color: 'gray'}}>No dishes match "{searchQuery}"</Text>
+                ) : (
+                    <>
+                        <Text style={{fontSize: 50, marginBottom: 10}}>🍲</Text>
+                        <Text style={{color: 'gray'}}>No dishes yet.</Text>
+                    </>
+                )}
             </View>
             }
             renderItem={renderDishRow}
@@ -240,21 +276,29 @@ const styles = StyleSheet.create({
   resultContent: { flexDirection: 'row', padding: 12, alignItems: 'center' },
   resultImage: { width: 90, height: 90, borderRadius: 12, backgroundColor: '#ddd' }, 
 
-  // New Header Styles
   listHeaderContainer: { 
     backgroundColor: '#f9f9f9', 
-    paddingVertical: 10, 
+    paddingVertical: 15, 
     paddingHorizontal: 20,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#eee'
+  },
+  searchBar: {
+    marginBottom: 10,
+    backgroundColor: 'white',
+    elevation: 0, 
+    borderWidth: 1,
+    borderColor: '#ddd',
+    height: 45,
   },
   listHeaderText: {
     color: '#777',
     fontWeight: 'bold',
     fontSize: 14,
     textTransform: 'uppercase',
-    letterSpacing: 1
+    letterSpacing: 1,
+    marginTop: 5
   },
 
   row: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: 'white' },
