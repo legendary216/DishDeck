@@ -3,15 +3,18 @@ import { View, StyleSheet, FlatList, Alert, Image, TouchableOpacity } from 'reac
 import { Text, FAB, ActivityIndicator, Divider, Chip, Button, Card, IconButton } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
+const CACHE_KEY = 'DISHES_CACHE'; // Key for saving data
 
 export default function DeckScreen() {
   const [dishes, setDishes] = useState<any[]>([]);
+  
+  // 'loading' is for the Initial Empty State. 
+  // If we find cache, we set this false immediately.
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
-  // NEW: Logout Loading State
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // Quick Suggest State
@@ -20,12 +23,28 @@ export default function DeckScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchDishes();
+      loadCacheAndFetch();
     }, [])
   );
 
-  const fetchDishes = async () => {
-    if (!refreshing) setLoading(true);
+  const loadCacheAndFetch = async () => {
+    // 1. INSTANTLY LOAD CACHE
+    try {
+      const cachedData = await AsyncStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        const parsed = JSON.parse(cachedData);
+        setDishes(parsed);
+        setLoading(false); // Show cached data immediately
+      }
+    } catch (e) {
+      console.log('Cache Error:', e);
+    }
+
+    // 2. FETCH FRESH DATA (Background)
+    await fetchFromSupabase();
+  };
+
+  const fetchFromSupabase = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
@@ -35,28 +54,33 @@ export default function DeckScreen() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) Alert.alert("Error", error.message);
-      else setDishes(data || []);
+      if (error) {
+        console.error(error);
+      } else if (data) {
+        setDishes(data);
+        // 3. UPDATE CACHE
+        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
+      }
     }
+    // Ensure loading is off (in case cache was empty)
     setLoading(false);
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchDishes();
+    await fetchFromSupabase();
     setRefreshing(false);
   };
 
   const handleLogout = async () => {
-    setIsLoggingOut(true); // 1. Start Spinner
-    
+    setIsLoggingOut(true);
     const { error } = await supabase.auth.signOut();
-    
     if (error) {
       Alert.alert("Error", error.message);
-      setIsLoggingOut(false); // Stop if failed
+      setIsLoggingOut(false);
     } else {
-      // 2. Force navigation to Login (Root)
+      // Clear cache on logout to protect privacy
+      await AsyncStorage.removeItem(CACHE_KEY);
       router.replace('/'); 
     }
   };
@@ -105,7 +129,6 @@ export default function DeckScreen() {
       <View style={styles.header}>
         <Text variant="headlineMedium" style={styles.title}>My Kitchen</Text>
         
-        {/* LOGOUT BUTTON with Loading State */}
         {isLoggingOut ? (
             <ActivityIndicator animating={true} color="red" size="small" />
         ) : (
@@ -165,25 +188,28 @@ export default function DeckScreen() {
       <View style={{height: 10, backgroundColor: '#f5f5f5'}} />
 
       {/* --- MAIN LIST --- */}
-      {loading && !refreshing && <ActivityIndicator animating={true} size="large" style={{marginTop: 50}} />}
-
-      <FlatList
-        data={dishes}
-        keyExtractor={(item) => item.id.toString()}
-        contentContainerStyle={{ paddingBottom: 100 }}
-        refreshing={refreshing}
-        onRefresh={onRefresh}
-        ItemSeparatorComponent={() => <Divider />}
-        ListEmptyComponent={
-          !loading ? (
+      {/* Logic: If loading is TRUE, it means we have NO cache and network is working -> Show Spinner.
+         If loading is FALSE, we have data (either cache or fresh) -> Show List.
+      */}
+      {loading && !refreshing && dishes.length === 0 ? (
+        <ActivityIndicator animating={true} size="large" style={{marginTop: 50}} />
+      ) : (
+        <FlatList
+            data={dishes}
+            keyExtractor={(item) => item.id.toString()}
+            contentContainerStyle={{ paddingBottom: 100 }}
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            ItemSeparatorComponent={() => <Divider />}
+            ListEmptyComponent={
             <View style={styles.emptyContainer}>
                 <Text style={{fontSize: 50, marginBottom: 10}}>🍲</Text>
                 <Text style={{color: 'gray'}}>No dishes yet.</Text>
             </View>
-          ) : null
-        }
-        renderItem={renderDishRow}
-      />
+            }
+            renderItem={renderDishRow}
+        />
+      )}
 
       <FAB
         icon="plus"
