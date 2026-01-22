@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { View, StyleSheet, FlatList, Dimensions, Alert } from 'react-native';
-import { Text, Card, FAB, Chip, ActivityIndicator } from 'react-native-paper';
+import { Text, Card, FAB, Chip, ActivityIndicator, IconButton } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { useFocusEffect, router } from 'expo-router';
 
@@ -9,11 +9,14 @@ const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 export default function PlanScreen() {
-  const [activeIndex, setActiveIndex] = useState(1); // Start at Lunch
+  const [activeIndex, setActiveIndex] = useState(1);
   const [plans, setPlans] = useState<any>({ Breakfast: {}, Lunch: {}, Dinner: {} });
   const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false); // <--- New State for Pull-to-Refresh
+  const [refreshing, setRefreshing] = useState(false);
   
+  // Get Current Day Name (e.g., "Friday")
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+
   const flatListRef = useRef<FlatList>(null);
 
   useFocusEffect(
@@ -23,9 +26,7 @@ export default function PlanScreen() {
   );
 
   const fetchAllPlans = async () => {
-    // Only show full loading spinner if NOT refreshing (otherwise the pull-down spinner handles it)
     if (!refreshing) setLoading(true);
-    
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -34,9 +35,8 @@ export default function PlanScreen() {
       .select('day, meal_type, dishes(*)') 
       .eq('user_id', user.id);
 
-    if (error) {
-      console.error(error);
-    } else {
+    if (error) console.error(error);
+    else {
       const newPlans: any = { Breakfast: {}, Lunch: {}, Dinner: {} };
       data.forEach((item: any) => {
         if (item.dishes && item.meal_type) {
@@ -48,7 +48,6 @@ export default function PlanScreen() {
     setLoading(false);
   };
 
-  // Wrapper for Pull-to-Refresh
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchAllPlans();
@@ -61,7 +60,6 @@ export default function PlanScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    // 1. Find candidates
     const { data: candidates } = await supabase
       .from('dishes')
       .select('id')
@@ -74,7 +72,6 @@ export default function PlanScreen() {
       return;
     }
 
-    // 2. Shuffle Logic
     const newRows = DAYS.map(day => ({
       user_id: user.id,
       day: day,
@@ -82,16 +79,8 @@ export default function PlanScreen() {
       dish_id: candidates[Math.floor(Math.random() * candidates.length)].id
     }));
 
-    // 3. Save
     await supabase.from('weekly_plan').upsert(newRows, { onConflict: 'user_id, day, meal_type' });
-    
-    // 4. Refresh UI
     await fetchAllPlans();
-  };
-
-  const onMomentumScrollEnd = (e: any) => {
-    const pageIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    setActiveIndex(pageIndex);
   };
 
   const scrollToIndex = (index: number) => {
@@ -99,28 +88,47 @@ export default function PlanScreen() {
     flatListRef.current?.scrollToIndex({ index, animated: true });
   };
 
+  const onMomentumScrollEnd = (e: any) => {
+    const pageIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+    setActiveIndex(pageIndex);
+  };
+
+  // NEW: Navigate to the picker screen
+  const openPicker = (day: string, type: string) => {
+    router.push({ pathname: '/pick-dish', params: { day, mealType: type } });
+  };
+
   const renderDayRow = (day: string, currentType: string) => {
     const dish = plans[currentType]?.[day];
+    const isToday = day === todayName; // Check if this row is today
+
     return (
-      <View style={styles.dayRow} key={day}>
-        <Text style={styles.dayLabel}>{day.substring(0, 3)}</Text>
+      <View style={[styles.dayRow, isToday && styles.todayRow]} key={day}>
+        <Text style={[styles.dayLabel, isToday && {color: '#6200ee'}]}>
+          {day.substring(0, 3)}
+        </Text>
+        
         {dish ? (
           <Card 
-            style={styles.card} 
+            style={[styles.card, isToday && {borderColor: '#6200ee', borderWidth: 1}]} 
             onPress={() => router.push({ pathname: '/dish/[id]', params: { id: dish.id } })}
           >
             <View style={styles.cardContent}>
               <Card.Cover source={{ uri: dish.image_path || 'https://via.placeholder.com/100' }} style={styles.miniImage} />
               <View style={styles.textContainer}>
                 <Text variant="bodyLarge" style={{fontWeight:'bold'}}>{dish.name}</Text>
-                <Text variant="bodySmall" style={{color:'gray'}}>{currentType}</Text>
               </View>
+              {/* Edit Icon */}
+              <IconButton icon="pencil" size={20} onPress={() => openPicker(day, currentType)} />
             </View>
           </Card>
         ) : (
-          <View style={styles.emptySlot}>
-            <Text style={{color: '#aaa'}}>Nothing planned</Text>
-          </View>
+          <Card style={styles.emptyCard} onPress={() => openPicker(day, currentType)}>
+             <View style={styles.emptyContent}>
+                <Text style={{color: '#aaa', marginRight: 10}}>Add Dish</Text>
+                <IconButton icon="plus-circle-outline" size={20} iconColor="#aaa" />
+             </View>
+          </Card>
         )}
       </View>
     );
@@ -130,7 +138,6 @@ export default function PlanScreen() {
     <View style={styles.container}>
       <Text variant="headlineMedium" style={styles.header}>Weekly Plan</Text>
 
-      {/* TOP TABS */}
       <View style={styles.chipsRow}>
         {MEAL_TYPES.map((type, index) => (
           <Chip
@@ -145,35 +152,25 @@ export default function PlanScreen() {
         ))}
       </View>
 
-      {/* Main loading spinner (only for initial load/shuffle, not refresh) */}
-      {loading && !refreshing && (
-        <ActivityIndicator animating={true} style={{position:'absolute', top: 150, zIndex: 10, alignSelf:'center'}} />
-      )}
+      {loading && !refreshing && <ActivityIndicator animating={true} style={{position:'absolute', top: 150, zIndex: 10, alignSelf:'center'}} />}
 
-      {/* HORIZONTAL SWIPE CONTAINER */}
       <FlatList
         ref={flatListRef}
         data={MEAL_TYPES}
         horizontal
         pagingEnabled
-        showsHorizontalScrollIndicator={false} // Hide Horizontal Bar
+        showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onMomentumScrollEnd}
         keyExtractor={(item) => item}
         renderItem={({ item: type }) => (
           <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 15 }}>
-             {/* VERTICAL LIST (The Schedule) */}
              <FlatList 
                 data={DAYS}
                 keyExtractor={day => day}
-                scrollEnabled={true}
                 contentContainerStyle={{ paddingBottom: 100 }}
-                showsVerticalScrollIndicator={false} // <--- Hide Vertical Bar
-                
-                // --- PULL TO REFRESH ---
+                showsVerticalScrollIndicator={false}
                 refreshing={refreshing}
                 onRefresh={onRefresh}
-                // -----------------------
-
                 renderItem={({ item: day }) => renderDayRow(day, type)}
              />
           </View>
@@ -196,12 +193,14 @@ const styles = StyleSheet.create({
   header: { marginTop: 40, marginBottom: 15, fontWeight: 'bold', paddingLeft: 15 },
   chipsRow: { flexDirection: 'row', marginBottom: 10, justifyContent: 'center', gap: 10 },
   chip: { marginRight: 5 },
-  dayRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  dayRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, padding: 5, borderRadius: 8 },
+  todayRow: { backgroundColor: '#eaddff' }, // Light purple highlight for today
   dayLabel: { width: 50, fontWeight: 'bold', fontSize: 16, color: '#555' },
   card: { flex: 1, marginLeft: 10 },
+  emptyCard: { flex: 1, marginLeft: 10, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ccc', borderStyle: 'dashed', elevation: 0 },
   cardContent: { flexDirection: 'row', alignItems: 'center', padding: 5 },
-  miniImage: { width: 60, height: 60, borderRadius: 8 },
-  textContainer: { marginLeft: 15, flex: 1 },
-  emptySlot: { flex: 1, marginLeft: 10, height: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: '#e0e0e0', borderRadius: 8, borderStyle: 'dashed', borderWidth: 1, borderColor: '#aaa' },
+  emptyContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', padding: 10 },
+  miniImage: { width: 50, height: 50, borderRadius: 8 },
+  textContainer: { marginLeft: 10, flex: 1 },
   fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#6200ee' },
 });
