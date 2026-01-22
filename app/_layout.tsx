@@ -1,43 +1,57 @@
-import { Stack, router } from "expo-router";
-import { PaperProvider } from 'react-native-paper';
+import { Stack, Slot, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabase';
-import { Session } from '@supabase/supabase-js';
+import { View, ActivityIndicator } from 'react-native';
+import { Provider as PaperProvider } from 'react-native-paper';
 
 export default function RootLayout() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState<any>(null);
+  const [initialized, setInitialized] = useState(false); // <--- NEW CHECK
+  const segments = useSegments();
+  const router = useRouter();
 
   useEffect(() => {
-    // 1. Check initial session
+    // 1. Check User Session immediately
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
-      setLoading(false);
+      setInitialized(true); // <--- Mark as ready
     });
 
     // 2. Listen for changes (Login/Logout)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      
-      // Manual redirect helper (just in case)
-      if (session) router.replace('/(tabs)');
-      else if (!session && !loading) router.replace('/login');
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
+  useEffect(() => {
+    if (!initialized) return;
+
+    const inTabsGroup = segments[0] === '(tabs)';
+
+    // Redirect Logic
+    if (session && !inTabsGroup) {
+      router.replace('/(tabs)'); // Go to Home
+    } else if (!session && inTabsGroup) {
+      router.replace('/'); // Go to Login
+    }
+  }, [session, initialized, segments]);
+
+  // 3. SHOW NOTHING (or Loader) UNTIL CHECK IS DONE
+  if (!initialized) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#6200ee" />
+      </View>
+    );
+  }
+
   return (
     <PaperProvider>
       <Stack screenOptions={{ headerShown: false }}>
-        {/* We use the logic: "If we have a session, show Tabs. If not, show Login."
-           This effectively "protects" the tabs.
-        */}
-        {session ? (
-          <Stack.Screen name="(tabs)" />
-        ) : (
-          <Stack.Screen name="login" />
-        )}
+        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
       </Stack>
     </PaperProvider>
   );

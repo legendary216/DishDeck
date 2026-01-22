@@ -1,20 +1,24 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { View, StyleSheet, FlatList, Dimensions, Alert, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { Text, Card, FAB, Chip, ActivityIndicator, IconButton } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { useFocusEffect, router } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
+const CACHE_KEY = 'WEEKLY_PLAN_CACHE';
+
 export default function PlanScreen() {
-  const [activeIndex, setActiveIndex] = useState(1);
+  const [activeIndex, setActiveIndex] = useState(0);
   const [plans, setPlans] = useState<any>({ Breakfast: {}, Lunch: {}, Dinner: {} });
   
-  // Loading States
-  const [loading, setLoading] = useState(true); // Start true to hide structure immediately
-  const [hasLoaded, setHasLoaded] = useState(false); 
+  // 'loading' = Initial app start (we try to hide this with cache)
+  const [loading, setLoading] = useState(true); 
+  // 'isShuffling' = Explicit user action (we WANT to show spinner)
+  const [isShuffling, setIsShuffling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
@@ -22,14 +26,25 @@ export default function PlanScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      fetchAllPlans();
+      loadCacheAndFetch();
     }, [])
   );
 
-  const fetchAllPlans = async () => {
-    // Only show full screen loader if we haven't loaded before
-    if (!hasLoaded && !refreshing) setLoading(true);
+  const loadCacheAndFetch = async () => {
+    // 1. Try Cache First (Instant)
+    try {
+      const cachedData = await AsyncStorage.getItem(CACHE_KEY);
+      if (cachedData) {
+        setPlans(JSON.parse(cachedData));
+        setLoading(false); 
+      }
+    } catch (e) { console.log(e); }
 
+    // 2. Then Fetch Fresh Data
+    await fetchFromSupabase();
+  };
+
+  const fetchFromSupabase = async () => {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -38,8 +53,7 @@ export default function PlanScreen() {
       .select('day, meal_type, dishes(*)') 
       .eq('user_id', user.id);
 
-    if (error) console.error(error);
-    else {
+    if (data) {
       const newPlans: any = { Breakfast: {}, Lunch: {}, Dinner: {} };
       data.forEach((item: any) => {
         if (item.dishes && item.meal_type) {
@@ -47,25 +61,22 @@ export default function PlanScreen() {
         }
       });
       setPlans(newPlans);
+      // Update Cache silently
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newPlans));
     }
-    
     setLoading(false);
-    setHasLoaded(true); // Data is ready, now we can show the list
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchAllPlans();
-    setRefreshing(false);
   };
 
   const handleShuffle = async () => {
     const currentType = MEAL_TYPES[activeIndex];
-    setLoading(true); // Show loader during shuffle
+    
+    // 1. TRIGGER LOADING SCREEN
+    setIsShuffling(true); 
     
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
+    // 2. Get Candidates
     const { data: candidates } = await supabase
       .from('dishes')
       .select('id')
@@ -74,10 +85,11 @@ export default function PlanScreen() {
 
     if (!candidates || candidates.length === 0) {
       Alert.alert("Empty Deck", `No dishes found for ${currentType}!`);
-      setLoading(false);
+      setIsShuffling(false);
       return;
     }
 
+    // 3. Generate New Plan Logic
     const newRows = DAYS.map(day => ({
       user_id: user.id,
       day: day,
@@ -85,8 +97,20 @@ export default function PlanScreen() {
       dish_id: candidates[Math.floor(Math.random() * candidates.length)].id
     }));
 
+    // 4. Save to DB
     await supabase.from('weekly_plan').upsert(newRows, { onConflict: 'user_id, day, meal_type' });
-    await fetchAllPlans();
+    
+    // 5. Fetch New Data (Updated DB -> State -> Cache)
+    await fetchFromSupabase();
+    
+    // 6. HIDE LOADING SCREEN
+    setIsShuffling(false);
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchFromSupabase();
+    setRefreshing(false);
   };
 
   const scrollToIndex = (index: number) => {
@@ -141,6 +165,12 @@ export default function PlanScreen() {
     );
   };
 
+  // --- DECISION: SHOW LOADING OR LIST? ---
+  // If explicitly shuffling -> SHOW SPINNER
+  // If initial load AND no cache -> SHOW SPINNER
+  // Else -> SHOW LIST
+  const shouldShowSpinner = isShuffling || (loading && Object.keys(plans.Lunch).length === 0);
+
   return (
     <View style={styles.container}>
       <Text variant="headlineMedium" style={styles.header}>Weekly Plan</Text>
@@ -159,9 +189,7 @@ export default function PlanScreen() {
         ))}
       </View>
 
-      {/* --- CONDITIONAL RENDERING FIX --- */}
-      {/* If loading for the first time, show spinner. Else, show the list. */}
-      {loading && !refreshing ? (
+      {shouldShowSpinner ? (
         <ActivityIndicator animating={true} size="large" style={{ marginTop: 100 }} />
       ) : (
         <FlatList
@@ -194,7 +222,7 @@ export default function PlanScreen() {
         label="Shuffle"
         style={styles.fab}
         onPress={handleShuffle}
-        disabled={loading}
+        disabled={isShuffling} // Prevent double taps
       />
     </View>
   );
