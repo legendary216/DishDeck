@@ -6,13 +6,11 @@ import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
-const CACHE_KEY = 'DISHES_CACHE'; // Key for saving data
+const CACHE_KEY = 'DISHES_CACHE';
 
 export default function DeckScreen() {
   const [dishes, setDishes] = useState<any[]>([]);
   
-  // 'loading' is for the Initial Empty State. 
-  // If we find cache, we set this false immediately.
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
@@ -28,19 +26,14 @@ export default function DeckScreen() {
   );
 
   const loadCacheAndFetch = async () => {
-    // 1. INSTANTLY LOAD CACHE
     try {
       const cachedData = await AsyncStorage.getItem(CACHE_KEY);
       if (cachedData) {
-        const parsed = JSON.parse(cachedData);
-        setDishes(parsed);
-        setLoading(false); // Show cached data immediately
+        setDishes(JSON.parse(cachedData));
+        setLoading(false); 
       }
-    } catch (e) {
-      console.log('Cache Error:', e);
-    }
+    } catch (e) { console.log(e); }
 
-    // 2. FETCH FRESH DATA (Background)
     await fetchFromSupabase();
   };
 
@@ -54,15 +47,11 @@ export default function DeckScreen() {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error(error);
-      } else if (data) {
+      if (data) {
         setDishes(data);
-        // 3. UPDATE CACHE
         AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
       }
     }
-    // Ensure loading is off (in case cache was empty)
     setLoading(false);
   };
 
@@ -79,7 +68,6 @@ export default function DeckScreen() {
       Alert.alert("Error", error.message);
       setIsLoggingOut(false);
     } else {
-      // Clear cache on logout to protect privacy
       await AsyncStorage.removeItem(CACHE_KEY);
       router.replace('/'); 
     }
@@ -140,7 +128,7 @@ export default function DeckScreen() {
 
       {/* --- QUICK SUGGEST SECTION --- */}
       <View style={styles.suggestContainer}>
-        <Text variant="titleMedium" style={{marginBottom: 10, fontWeight:'bold', color:'#444'}}>
+        <Text variant="titleLarge" style={{marginBottom: 12, fontWeight:'bold', color:'#333'}}>
             Quick Decide 🎲
         </Text>
         
@@ -151,6 +139,7 @@ export default function DeckScreen() {
                     selected={quickType === type} 
                     onPress={() => setQuickType(type)}
                     style={styles.chip}
+                    textStyle={{ fontSize: 14 }}
                     showSelectedOverlay
                 >
                     {type}
@@ -159,38 +148,51 @@ export default function DeckScreen() {
         </View>
 
         {!suggestion ? (
-            <Button mode="contained" onPress={handleQuickSuggest} style={styles.suggestBtn}>
+            <Button 
+                mode="contained" 
+                onPress={handleQuickSuggest} 
+                style={styles.suggestBtn}
+                contentStyle={{ height: 55 }} 
+                labelStyle={{ fontSize: 18, fontWeight: 'bold' }}
+            >
                 Pick for Me
             </Button>
         ) : (
-            <Card style={styles.resultCard} onPress={() => router.push({ pathname: '/dish/[id]', params: { id: suggestion.id } })}>
+            // DISABLED ONPRESS: Just a view card now.
+            <Card style={styles.resultCard}>
                 <View style={styles.resultContent}>
                     <Image 
                         source={{ uri: getSuggestionImage() }} 
                         style={styles.resultImage} 
                     />
                     
-                    <View style={{flex: 1, marginLeft: 15}}>
-                        <Text style={{color:'#6200ee', fontWeight:'bold', marginBottom: 2, fontSize: 12}}>
+                    <View style={{flex: 1, marginLeft: 15, justifyContent: 'center'}}>
+                        <Text style={{color:'#6200ee', fontWeight:'bold', marginBottom: 4, fontSize: 13}}>
                             How about...
                         </Text>
-                        <Text variant="titleMedium" style={{fontWeight:'bold'}} numberOfLines={2}>
+                        <Text variant="headlineSmall" style={{fontWeight:'bold', lineHeight: 28}} numberOfLines={2}>
                             {suggestion.name}
                         </Text>
                     </View>
                     
-                    <IconButton icon="refresh" iconColor="#6200ee" onPress={handleQuickSuggest} />
+                    {/* RELOAD ICON: This is the only interactive part */}
+                    <IconButton 
+                        icon="refresh" 
+                        iconColor="#6200ee" 
+                        size={30} 
+                        onPress={handleQuickSuggest} 
+                    />
                 </View>
             </Card>
         )}
       </View>
       
-      <View style={{height: 10, backgroundColor: '#f5f5f5'}} />
+      {/* SEPARATOR WITH TEXT */}
+      <View style={styles.listHeaderContainer}>
+        <Text style={styles.listHeaderText}>Here is your list OF DISHES📜</Text>
+      </View>
 
       {/* --- MAIN LIST --- */}
-      {/* Logic: If loading is TRUE, it means we have NO cache and network is working -> Show Spinner.
-         If loading is FALSE, we have data (either cache or fresh) -> Show List.
-      */}
       {loading && !refreshing && dishes.length === 0 ? (
         <ActivityIndicator animating={true} size="large" style={{marginTop: 50}} />
       ) : (
@@ -229,14 +231,31 @@ const styles = StyleSheet.create({
   },
   title: { fontWeight: 'bold' },
 
-  suggestContainer: { paddingHorizontal: 20, paddingBottom: 20 },
-  chipRow: { flexDirection: 'row', gap: 8, marginBottom: 15 },
-  chip: { backgroundColor: '#f0f0f0' },
-  suggestBtn: { borderRadius: 8 },
+  suggestContainer: { paddingHorizontal: 20, paddingBottom: 15 },
+  chipRow: { flexDirection: 'row', gap: 10, marginBottom: 15 },
+  chip: { backgroundColor: '#f0f0f0', paddingVertical: 2 },
+  suggestBtn: { borderRadius: 12, justifyContent: 'center' },
   
-  resultCard: { backgroundColor: '#ede7f6', marginTop: 5 },
-  resultContent: { flexDirection: 'row', alignItems: 'center', padding: 10 },
-  resultImage: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#ddd' }, 
+  resultCard: { backgroundColor: '#ede7f6', marginTop: 5, borderRadius: 16 },
+  resultContent: { flexDirection: 'row', padding: 12, alignItems: 'center' },
+  resultImage: { width: 90, height: 90, borderRadius: 12, backgroundColor: '#ddd' }, 
+
+  // New Header Styles
+  listHeaderContainer: { 
+    backgroundColor: '#f9f9f9', 
+    paddingVertical: 10, 
+    paddingHorizontal: 20,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#eee'
+  },
+  listHeaderText: {
+    color: '#777',
+    fontWeight: 'bold',
+    fontSize: 14,
+    textTransform: 'uppercase',
+    letterSpacing: 1
+  },
 
   row: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: 'white' },
   thumbnail: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#f0f0f0' },
