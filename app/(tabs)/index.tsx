@@ -1,28 +1,24 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, StyleSheet, FlatList, Alert ,Image} from 'react-native';
-import { Text, Card, Button, ActivityIndicator } from 'react-native-paper';
+import React, { useState, useCallback } from 'react';
+import { View, StyleSheet, FlatList, Alert, Image, TouchableOpacity } from 'react-native';
+import { Text, FAB, ActivityIndicator, Divider } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
 
 export default function DeckScreen() {
   const [dishes, setDishes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true); // For the very first load
-  const [refreshing, setRefreshing] = useState(false); // For pull-to-refresh
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  // 1. Load data when app opens
-  useEffect(() => {
-    loadInitialData();
-  }, []);
-
-  // 2. Also reload data whenever we come back to this tab (e.g. after adding a dish)
   useFocusEffect(
     useCallback(() => {
       fetchDishes();
     }, [])
   );
 
-  // Helper to fetch data (does not control loading state)
   const fetchDishes = async () => {
+    // If we are pulling to refresh, don't show the full screen loader
+    if (!refreshing) setLoading(true);
+
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
@@ -35,16 +31,9 @@ export default function DeckScreen() {
       if (error) Alert.alert("Error", error.message);
       else setDishes(data || []);
     }
-  };
-
-  // Wrapper for Initial Load (Shows full screen spinner)
-  const loadInitialData = async () => {
-    setLoading(true);
-    await fetchDishes();
     setLoading(false);
   };
 
-  // Wrapper for Pull-to-Refresh (Shows top spinner only)
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchDishes();
@@ -55,63 +44,131 @@ export default function DeckScreen() {
     await supabase.auth.signOut();
   };
 
+  // --- NEW COMPACT ROW RENDERER ---
+  const renderDishRow = ({ item }: { item: any }) => {
+    // Sanitize URL
+    const rawUrl = item.image_path || '';
+    const imageUrl = rawUrl.trim().replace(/ /g, '%20') || 'https://via.placeholder.com/150';
+
+    return (
+      <TouchableOpacity 
+        style={styles.row} 
+        onPress={() => router.push({ pathname: '/dish/[id]', params: { id: item.id } })}
+      >
+        {/* Small Thumbnail Image */}
+        <Image 
+          source={{ uri: imageUrl }} 
+          style={styles.thumbnail} 
+          resizeMode="cover"
+        />
+        
+        {/* Text Details */}
+        <View style={styles.textContainer}>
+          <Text variant="titleMedium" style={styles.dishName} numberOfLines={1}>
+            {item.name}
+          </Text>
+          <Text variant="bodySmall" style={styles.dishType}>
+            {item.type}
+          </Text>
+        </View>
+
+        {/* Arrow Icon (Optional visual cue) */}
+        <Text style={{color: '#ccc', fontSize: 20}}>›</Text>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text variant="headlineMedium" style={styles.title}>My Deck</Text>
-        <Button icon="logout" onPress={handleLogout}>Log Out</Button>
+        <Text variant="headlineMedium" style={styles.title}>My Kitchen</Text>
+        {/* Simple Logout Text Button */}
+        <TouchableOpacity onPress={handleLogout}>
+            <Text style={{color: 'red', fontWeight: 'bold'}}>Log Out</Text>
+        </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {loading && !refreshing && (
         <ActivityIndicator animating={true} size="large" style={{marginTop: 50}} />
-      ) : (
-        <FlatList
-          data={dishes}
-          keyExtractor={(item) => item.id.toString()}
-          contentContainerStyle={{ paddingBottom: 100 }}
-          
-          // --- PULL TO REFRESH LOGIC ---
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          // -----------------------------
-
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>No dishes yet. Add one!</Text>
-          }
-        renderItem={({ item }) => {
-            // 1. Sanitize URL (Trim spaces from ends, encode spaces in middle)
-            const rawUrl = item.image_path || '';
-            const imageUrl = rawUrl.trim().replace(/ /g, '%20');
-            
-            console.log("Loading Image:", imageUrl); // Check your terminal for this
-
-            return (
-              <Card 
-                style={styles.card} 
-                onPress={() => router.push({ pathname: '/dish/[id]', params: { id: item.id } })}
-              >
-                {/* 2. Use Standard Image Component for Debugging */}
-                <Image 
-                  source={{ uri: imageUrl || 'https://via.placeholder.com/300' }} 
-                  style={{ width: '100%', height: 200, borderTopLeftRadius: 8, borderTopRightRadius: 8 }}
-                  resizeMode="cover"
-                  onError={(e) => console.log("IMAGE ERROR:", e.nativeEvent.error)}
-                />
-                
-                <Card.Title title={item.name} subtitle={item.type} />
-              </Card>
-            );
-          }}
-        />
       )}
+
+      <FlatList
+        data={dishes}
+        keyExtractor={(item) => item.id.toString()}
+        contentContainerStyle={{ paddingBottom: 100 }} // Space for FAB
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        ItemSeparatorComponent={() => <Divider />} // Thin line between rows
+        ListEmptyComponent={
+          !loading ? (
+            <View style={styles.emptyContainer}>
+                <Text style={{fontSize: 50, marginBottom: 10}}>🍲</Text>
+                <Text style={{color: 'gray'}}>No dishes yet.</Text>
+                <Text style={{color: 'gray'}}>Tap the + button to add one.</Text>
+            </View>
+          ) : null
+        }
+        renderItem={renderDishRow}
+      />
+
+      {/* THE ADD BUTTON (FAB) */}
+      <FAB
+        icon="plus"
+        style={styles.fab}
+        onPress={() => router.push('/add-dish')}
+        color="white"
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f5f5f5', padding: 10 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, marginTop: 40 },
+  container: { flex: 1, backgroundColor: '#fff' }, // Changed to white for cleaner look
+  header: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    paddingHorizontal: 20, 
+    marginTop: 50, 
+    marginBottom: 10 
+  },
   title: { fontWeight: 'bold' },
-  card: { marginBottom: 15 },
-  emptyText: { textAlign: 'center', marginTop: 50, fontSize: 18, color: '#888' }
+  
+  // Row Styles
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 15,
+    backgroundColor: 'white',
+  },
+  thumbnail: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+  },
+  textContainer: {
+    flex: 1,
+    marginLeft: 15,
+    justifyContent: 'center',
+  },
+  dishName: {
+    fontWeight: 'bold',
+    marginBottom: 2,
+  },
+  dishType: {
+    color: 'gray',
+  },
+
+  fab: {
+    position: 'absolute',
+    margin: 16,
+    right: 0,
+    bottom: 0,
+    backgroundColor: '#6200ee',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    marginTop: 100,
+  }
 });

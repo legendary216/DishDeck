@@ -4,7 +4,7 @@ import { TextInput, Button, Text, Chip, ProgressBar } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { decode } from 'base64-arraybuffer';
-import { supabase } from '../../utils/supabase';
+import { supabase } from '../utils/supabase';
 import { router } from 'expo-router';
 
 export default function AddDishScreen() {
