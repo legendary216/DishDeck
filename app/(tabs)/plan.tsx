@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, StyleSheet, FlatList, Dimensions, Alert, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { Text, Card, FAB, Chip, ActivityIndicator, IconButton } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
@@ -11,7 +11,10 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 export default function PlanScreen() {
   const [activeIndex, setActiveIndex] = useState(1);
   const [plans, setPlans] = useState<any>({ Breakfast: {}, Lunch: {}, Dinner: {} });
-  const [loading, setLoading] = useState(false);
+  
+  // Loading States
+  const [loading, setLoading] = useState(true); // Start true to hide structure immediately
+  const [hasLoaded, setHasLoaded] = useState(false); 
   const [refreshing, setRefreshing] = useState(false);
   
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
@@ -24,7 +27,9 @@ export default function PlanScreen() {
   );
 
   const fetchAllPlans = async () => {
-    if (!refreshing) setLoading(true);
+    // Only show full screen loader if we haven't loaded before
+    if (!hasLoaded && !refreshing) setLoading(true);
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -43,7 +48,9 @@ export default function PlanScreen() {
       });
       setPlans(newPlans);
     }
+    
     setLoading(false);
+    setHasLoaded(true); // Data is ready, now we can show the list
   };
 
   const onRefresh = async () => {
@@ -54,7 +61,8 @@ export default function PlanScreen() {
 
   const handleShuffle = async () => {
     const currentType = MEAL_TYPES[activeIndex];
-    setLoading(true);
+    setLoading(true); // Show loader during shuffle
+    
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
@@ -86,13 +94,9 @@ export default function PlanScreen() {
     flatListRef.current?.scrollToIndex({ index, animated: true });
   };
 
-  // --- FIX: UPDATES INDEX LIVE WHILE SCROLLING ---
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const xOffset = event.nativeEvent.contentOffset.x;
-    // Calculate which page we are mostly on
     const index = Math.round(xOffset / SCREEN_WIDTH);
-    
-    // Only update state if it actually changed (prevents flicker)
     if (index !== activeIndex && index >= 0 && index < MEAL_TYPES.length) {
       setActiveIndex(index);
     }
@@ -155,35 +159,35 @@ export default function PlanScreen() {
         ))}
       </View>
 
-      {loading && !refreshing && <ActivityIndicator animating={true} style={{position:'absolute', top: 150, zIndex: 10, alignSelf:'center'}} />}
-
-      <FlatList
-        ref={flatListRef}
-        data={MEAL_TYPES}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        
-        // --- NEW SCROLL HANDLERS ---
-        onScroll={handleScroll}
-        scrollEventThrottle={16} // Checks position every 16ms (60fps) for smoothness
-        // ---------------------------
-        
-        keyExtractor={(item) => item}
-        renderItem={({ item: type }) => (
-          <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 15 }}>
-             <FlatList 
-                data={DAYS}
-                keyExtractor={day => day}
-                contentContainerStyle={{ paddingBottom: 100 }}
-                showsVerticalScrollIndicator={false}
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                renderItem={({ item: day }) => renderDayRow(day, type)}
-             />
-          </View>
-        )}
-      />
+      {/* --- CONDITIONAL RENDERING FIX --- */}
+      {/* If loading for the first time, show spinner. Else, show the list. */}
+      {loading && !refreshing ? (
+        <ActivityIndicator animating={true} size="large" style={{ marginTop: 100 }} />
+      ) : (
+        <FlatList
+            ref={flatListRef}
+            data={MEAL_TYPES}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            keyExtractor={(item) => item}
+            renderItem={({ item: type }) => (
+            <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 15 }}>
+                <FlatList 
+                    data={DAYS}
+                    keyExtractor={day => day}
+                    contentContainerStyle={{ paddingBottom: 100 }}
+                    showsVerticalScrollIndicator={false}
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    renderItem={({ item: day }) => renderDayRow(day, type)}
+                />
+            </View>
+            )}
+        />
+      )}
 
       <FAB
         icon="shuffle"
