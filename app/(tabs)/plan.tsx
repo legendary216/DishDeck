@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, StyleSheet, FlatList, Dimensions, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, Dimensions, Alert, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
 import { Text, Card, FAB, Chip, ActivityIndicator, IconButton } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { useFocusEffect, router } from 'expo-router';
@@ -14,9 +14,7 @@ export default function PlanScreen() {
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   
-  // Get Current Day Name (e.g., "Friday")
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-
   const flatListRef = useRef<FlatList>(null);
 
   useFocusEffect(
@@ -88,19 +86,25 @@ export default function PlanScreen() {
     flatListRef.current?.scrollToIndex({ index, animated: true });
   };
 
-  const onMomentumScrollEnd = (e: any) => {
-    const pageIndex = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
-    setActiveIndex(pageIndex);
+  // --- FIX: UPDATES INDEX LIVE WHILE SCROLLING ---
+  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const xOffset = event.nativeEvent.contentOffset.x;
+    // Calculate which page we are mostly on
+    const index = Math.round(xOffset / SCREEN_WIDTH);
+    
+    // Only update state if it actually changed (prevents flicker)
+    if (index !== activeIndex && index >= 0 && index < MEAL_TYPES.length) {
+      setActiveIndex(index);
+    }
   };
 
-  // NEW: Navigate to the picker screen
   const openPicker = (day: string, type: string) => {
     router.push({ pathname: '/pick-dish', params: { day, mealType: type } });
   };
 
   const renderDayRow = (day: string, currentType: string) => {
     const dish = plans[currentType]?.[day];
-    const isToday = day === todayName; // Check if this row is today
+    const isToday = day === todayName;
 
     return (
       <View style={[styles.dayRow, isToday && styles.todayRow]} key={day}>
@@ -118,7 +122,6 @@ export default function PlanScreen() {
               <View style={styles.textContainer}>
                 <Text variant="bodyLarge" style={{fontWeight:'bold'}}>{dish.name}</Text>
               </View>
-              {/* Edit Icon */}
               <IconButton icon="pencil" size={20} onPress={() => openPicker(day, currentType)} />
             </View>
           </Card>
@@ -160,7 +163,12 @@ export default function PlanScreen() {
         horizontal
         pagingEnabled
         showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onMomentumScrollEnd}
+        
+        // --- NEW SCROLL HANDLERS ---
+        onScroll={handleScroll}
+        scrollEventThrottle={16} // Checks position every 16ms (60fps) for smoothness
+        // ---------------------------
+        
         keyExtractor={(item) => item}
         renderItem={({ item: type }) => (
           <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 15 }}>
@@ -194,7 +202,7 @@ const styles = StyleSheet.create({
   chipsRow: { flexDirection: 'row', marginBottom: 10, justifyContent: 'center', gap: 10 },
   chip: { marginRight: 5 },
   dayRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, padding: 5, borderRadius: 8 },
-  todayRow: { backgroundColor: '#eaddff' }, // Light purple highlight for today
+  todayRow: { backgroundColor: '#eaddff' },
   dayLabel: { width: 50, fontWeight: 'bold', fontSize: 16, color: '#555' },
   card: { flex: 1, marginLeft: 10 },
   emptyCard: { flex: 1, marginLeft: 10, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ccc', borderStyle: 'dashed', elevation: 0 },
