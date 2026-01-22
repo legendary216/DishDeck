@@ -45,7 +45,16 @@ export default function DeckScreen() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    // 1. Sign out from database
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
+      Alert.alert("Error", error.message);
+    } else {
+      // 2. FORCE navigation to Login screen (Route '/')
+      // This ensures you don't stay stuck on the Home screen
+      router.replace('/'); 
+    }
   };
 
   const handleQuickSuggest = () => {
