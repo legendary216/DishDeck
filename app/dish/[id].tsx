@@ -5,11 +5,10 @@ import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../../utils/supabase';
 
 export default function DishDetailScreen() {
-  const { id } = useLocalSearchParams(); // Get the ID from the URL
+  const { id } = useLocalSearchParams(); 
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   
-  // Dish Data State
   const [name, setName] = useState('');
   const [type, setType] = useState('');
   const [ingredients, setIngredients] = useState('');
@@ -51,10 +50,11 @@ export default function DishDetailScreen() {
     if (error) Alert.alert("Error", error.message);
     else {
       Alert.alert("Success", "Dish updated!");
-      setIsEditing(false); // Switch back to View mode
+      setIsEditing(false);
     }
   };
 
+  // UPDATED: Deletes both the Image File and the Database Row
   const handleDelete = () => {
     Alert.alert(
       "Delete Dish",
@@ -65,10 +65,34 @@ export default function DishDetailScreen() {
           text: "Delete", 
           style: "destructive", 
           onPress: async () => {
+            setLoading(true);
+
+            // 1. Delete Image from Storage (if it exists)
+            if (imagePath) {
+               // The imagePath is a full URL (e.g., https://.../dish-images/123.jpg)
+               // We need just the filename ("123.jpg") to delete it.
+               const fileName = imagePath.split('/').pop(); 
+
+               if (fileName) {
+                 const { error: storageError } = await supabase.storage
+                   .from('dish-images')
+                   .remove([fileName]);
+                 
+                 if (storageError) {
+                   console.log("Warning: Could not delete image file", storageError);
+                   // We continue anyway to ensure the dish is deleted from the DB
+                 }
+               }
+            }
+
+            // 2. Delete Row from Database
             const { error } = await supabase.from('dishes').delete().eq('id', id);
-            if (error) Alert.alert("Error", error.message);
-            else {
-              router.replace('/(tabs)'); // Go back to Deck
+            
+            if (error) {
+               Alert.alert("Error", error.message);
+               setLoading(false);
+            } else {
+               router.replace('/(tabs)'); 
             }
           }
         }
@@ -86,7 +110,6 @@ export default function DishDetailScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       
-      {/* Top Bar: Back Button & Edit/Delete Actions */}
       <View style={styles.topBar}>
         <Button icon="arrow-left" mode="text" onPress={() => router.back()}>Back</Button>
         <View style={{flexDirection: 'row'}}>
@@ -99,11 +122,7 @@ export default function DishDetailScreen() {
         </View>
       </View>
 
-      {/* Image Display */}
       <Image source={{ uri: imagePath || 'https://via.placeholder.com/300' }} style={styles.image} />
-
-      {/* FORM FIELDS */}
-      {/* If isEditing is true, we show Input fields. If false, we show standard Inputs but disabled/readonly */}
       
       <TextInput
         label="Name"
@@ -152,14 +171,12 @@ export default function DishDetailScreen() {
         style={styles.input}
       />
 
-      {/* Save Button (Only visible when editing) */}
       {isEditing && (
         <Button mode="contained" onPress={handleUpdate} style={styles.saveButton}>
           Save Changes
         </Button>
       )}
 
-      {/* View Mode Actions */}
       {!isEditing && youtubeLink ? (
         <Button icon="youtube" mode="contained" onPress={openLink} style={styles.ytButton} buttonColor="#FF0000">
             Watch Recipe

@@ -1,20 +1,28 @@
-import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, FlatList, Alert } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, StyleSheet, FlatList, Alert ,Image} from 'react-native';
 import { Text, Card, Button, ActivityIndicator } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 
 export default function DeckScreen() {
   const [dishes, setDishes] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // For the very first load
+  const [refreshing, setRefreshing] = useState(false); // For pull-to-refresh
 
-  // Fetch data when screen loads
+  // 1. Load data when app opens
   useEffect(() => {
-    fetchDishes();
+    loadInitialData();
   }, []);
 
+  // 2. Also reload data whenever we come back to this tab (e.g. after adding a dish)
+  useFocusEffect(
+    useCallback(() => {
+      fetchDishes();
+    }, [])
+  );
+
+  // Helper to fetch data (does not control loading state)
   const fetchDishes = async () => {
-    setLoading(true);
     const { data: { user } } = await supabase.auth.getUser();
     
     if (user) {
@@ -27,12 +35,24 @@ export default function DeckScreen() {
       if (error) Alert.alert("Error", error.message);
       else setDishes(data || []);
     }
+  };
+
+  // Wrapper for Initial Load (Shows full screen spinner)
+  const loadInitialData = async () => {
+    setLoading(true);
+    await fetchDishes();
     setLoading(false);
+  };
+
+  // Wrapper for Pull-to-Refresh (Shows top spinner only)
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchDishes();
+    setRefreshing(false);
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    // The _layout will handle the redirect
   };
 
   return (
@@ -49,18 +69,39 @@ export default function DeckScreen() {
           data={dishes}
           keyExtractor={(item) => item.id.toString()}
           contentContainerStyle={{ paddingBottom: 100 }}
+          
+          // --- PULL TO REFRESH LOGIC ---
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          // -----------------------------
+
           ListEmptyComponent={
             <Text style={styles.emptyText}>No dishes yet. Add one!</Text>
           }
-          renderItem={({ item }) => (
-            <Card 
-              style={styles.card} 
-              onPress={() => router.push({ pathname: '/dish/[id]', params: { id: item.id } })} // <--- Navigate to detail page
-            >
-              <Card.Cover source={{ uri: item.image_path || 'https://via.placeholder.com/300' }} />
-              <Card.Title title={item.name} subtitle={item.type} />
-            </Card>
-          )}
+        renderItem={({ item }) => {
+            // 1. Sanitize URL (Trim spaces from ends, encode spaces in middle)
+            const rawUrl = item.image_path || '';
+            const imageUrl = rawUrl.trim().replace(/ /g, '%20');
+            
+            console.log("Loading Image:", imageUrl); // Check your terminal for this
+
+            return (
+              <Card 
+                style={styles.card} 
+                onPress={() => router.push({ pathname: '/dish/[id]', params: { id: item.id } })}
+              >
+                {/* 2. Use Standard Image Component for Debugging */}
+                <Image 
+                  source={{ uri: imageUrl || 'https://via.placeholder.com/300' }} 
+                  style={{ width: '100%', height: 200, borderTopLeftRadius: 8, borderTopRightRadius: 8 }}
+                  resizeMode="cover"
+                  onError={(e) => console.log("IMAGE ERROR:", e.nativeEvent.error)}
+                />
+                
+                <Card.Title title={item.name} subtitle={item.type} />
+              </Card>
+            );
+          }}
         />
       )}
     </View>
