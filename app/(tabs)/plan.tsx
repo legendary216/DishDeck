@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { View, StyleSheet, FlatList, Dimensions, Alert, NativeSyntheticEvent, NativeScrollEvent } from 'react-native';
-import { Text, Card, FAB, Chip, ActivityIndicator, IconButton } from 'react-native-paper';
+import { View, StyleSheet, FlatList, Dimensions, Alert, NativeSyntheticEvent, NativeScrollEvent, ScrollView } from 'react-native';
+import { Text, Card, FAB, Chip, ActivityIndicator, IconButton, Portal, Modal, TouchableRipple, Button } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { useFocusEffect, router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -18,6 +18,11 @@ export default function PlanScreen() {
   const [loading, setLoading] = useState(true); 
   const [isShuffling, setIsShuffling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Move/Swap State
+  const [moveModalVisible, setMoveModalVisible] = useState(false);
+  const [sourceDay, setSourceDay] = useState<string | null>(null);
+  const [isMoving, setIsMoving] = useState(false);
   
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   const flatListRef = useRef<FlatList>(null);
@@ -100,6 +105,70 @@ export default function PlanScreen() {
     setRefreshing(false);
   };
 
+  const openMoveModal = (day: string) => {
+    setSourceDay(day);
+    setMoveModalVisible(true);
+  };
+
+  const executeMove = async (targetDay: string) => {
+    if (!sourceDay) return;
+    if (sourceDay === targetDay) {
+        setMoveModalVisible(false);
+        return;
+    }
+
+    setIsMoving(true); 
+    const currentType = MEAL_TYPES[activeIndex];
+    const { data: { user } } = await supabase.auth.getUser();
+    
+    if (user) {
+        const sourceDish = plans[currentType]?.[sourceDay];
+        const targetDish = plans[currentType]?.[targetDay];
+
+        const updates = [];
+
+        if (sourceDish) {
+            updates.push({
+                user_id: user.id,
+                day: targetDay,
+                meal_type: currentType,
+                dish_id: sourceDish.id
+            });
+        }
+
+        if (targetDish) {
+            updates.push({
+                user_id: user.id,
+                day: sourceDay,
+                meal_type: currentType,
+                dish_id: targetDish.id
+            });
+        } else {
+            // Explicit delete if target was empty
+            await supabase.from('weekly_plan').delete().match({
+                user_id: user.id,
+                day: sourceDay,
+                meal_type: currentType
+            });
+        }
+
+        if (updates.length > 0) {
+            await supabase.from('weekly_plan').upsert(updates, { onConflict: 'user_id, day, meal_type' });
+        }
+
+        await fetchFromSupabase();
+        
+        const msg = targetDish 
+            ? `Swapped ${sourceDay} and ${targetDay}!` 
+            : `Moved to ${targetDay}!`;
+        Alert.alert("Success", msg);
+    }
+
+    setIsMoving(false); 
+    setMoveModalVisible(false);
+    setSourceDay(null);
+  };
+
   const scrollToIndex = (index: number) => {
     setActiveIndex(index);
     flatListRef.current?.scrollToIndex({ index, animated: true });
@@ -130,14 +199,26 @@ export default function PlanScreen() {
         {dish ? (
           <Card 
             style={[styles.card, isToday && {borderColor: '#6200ee', borderWidth: 1}]} 
+            // LONG PRESS RESTORED
+            onLongPress={() => openMoveModal(day)}
+            delayLongPress={200}
             onPress={() => router.push({ pathname: '/dish/[id]', params: { id: dish.id } })}
           >
             <View style={styles.cardContent}>
               <Card.Cover source={{ uri: dish.image_path || 'https://via.placeholder.com/100' }} style={styles.miniImage} />
               <View style={styles.textContainer}>
                 <Text variant="bodyLarge" style={{fontWeight:'bold'}}>{dish.name}</Text>
+                {/* Visual Hint */}
+                <Text style={{fontSize: 10, color: '#aaa'}}>Hold to move</Text>
               </View>
-              <IconButton icon="pencil" size={20} onPress={() => openPicker(day, currentType)} />
+              
+              {/* Only Edit Icon (No Move Icon) */}
+              <IconButton 
+                icon="pencil" 
+                size={20} 
+                iconColor="#6200ee"
+                onPress={() => openPicker(day, currentType)} 
+              />
             </View>
           </Card>
         ) : (
@@ -173,17 +254,13 @@ export default function PlanScreen() {
       </View>
 
       <View style={{ flex: 1 }}>
-        {/* LOGIC FIX: The List is always present (so it keeps its scroll position),
-            but we turn its Opacity to 0 when loading. This makes it invisible but
-            keeps the layout intact.
-        */}
         <View style={{ flex: 1, opacity: shouldShowSpinner ? 0 : 1 }}>
             <FlatList
                 ref={flatListRef}
                 data={MEAL_TYPES}
                 horizontal
                 pagingEnabled
-                showsHorizontalScrollIndicator={false}
+                showsHorizontalScrollIndicator={false} 
                 onScroll={handleScroll}
                 scrollEventThrottle={16}
                 keyExtractor={(item) => item}
@@ -196,7 +273,7 @@ export default function PlanScreen() {
                             data={DAYS}
                             keyExtractor={day => day}
                             contentContainerStyle={{ paddingBottom: 100 }}
-                            showsVerticalScrollIndicator={false}
+                            showsVerticalScrollIndicator={false} 
                             refreshing={refreshing}
                             onRefresh={onRefresh}
                             renderItem={({ item: day }) => renderDayRow(day, type)}
@@ -206,7 +283,6 @@ export default function PlanScreen() {
             />
         </View>
 
-        {/* SPINNER: Absolute Center. Only visible when loading. */}
         {shouldShowSpinner && (
             <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
                 <ActivityIndicator animating={true} size="large" color="#6200ee" />
@@ -221,6 +297,50 @@ export default function PlanScreen() {
         onPress={handleShuffle}
         disabled={isShuffling} 
       />
+
+      {/* --- MOVE MODAL WITH SPINNER --- */}
+      <Portal>
+        <Modal visible={moveModalVisible} onDismiss={() => setMoveModalVisible(false)} contentContainerStyle={styles.modal}>
+          
+          {isMoving ? (
+            <View style={{padding: 20, alignItems: 'center'}}>
+                <ActivityIndicator animating={true} size="large" color="#6200ee" />
+                <Text style={{marginTop: 10, color: '#666'}}>Moving dish...</Text>
+            </View>
+          ) : (
+            <>
+                <Text variant="titleLarge" style={{marginBottom: 15, textAlign:'center'}}>
+                    Move {sourceDay}'s Meal To...
+                </Text>
+                <ScrollView style={{maxHeight: 300}} showsVerticalScrollIndicator={false}>
+                    {DAYS.map(day => (
+                        <TouchableRipple 
+                            key={day} 
+                            onPress={() => executeMove(day)}
+                            disabled={day === sourceDay}
+                            style={[
+                                styles.modalOption, 
+                                day === sourceDay && {backgroundColor: '#eee', opacity: 0.5} 
+                            ]}
+                        >
+                            <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
+                                <Text variant="bodyLarge" style={{fontWeight: day === sourceDay ? 'bold' : 'normal'}}>
+                                    {day}
+                                </Text>
+                                {plans[MEAL_TYPES[activeIndex]]?.[day] && day !== sourceDay && (
+                                    <Text style={{fontSize: 10, color:'orange'}}>Swap ⇄</Text>
+                                )}
+                            </View>
+                        </TouchableRipple>
+                    ))}
+                </ScrollView>
+                <Button onPress={() => setMoveModalVisible(false)} style={{marginTop: 10}}>Cancel</Button>
+            </>
+          )}
+
+        </Modal>
+      </Portal>
+
     </View>
   );
 }
@@ -240,4 +360,7 @@ const styles = StyleSheet.create({
   miniImage: { width: 50, height: 50, borderRadius: 8 },
   textContainer: { marginLeft: 10, flex: 1 },
   fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#6200ee' },
+  
+  modal: { backgroundColor: 'white', padding: 20, margin: 20, borderRadius: 10 },
+  modalOption: { paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
 });
