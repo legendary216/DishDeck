@@ -65,7 +65,14 @@ export default function DashboardScreen() {
       )}
     </TouchableOpacity>
   );
-
+  if (loading) {
+  return (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator animating={true} color="#6200ee" size="large" />
+      <Text style={{ marginTop: 10, color: '#666' }}>Fetching your menu...</Text>
+    </View>
+  );
+}
   return (
     <View style={styles.container}>
       <Appbar.Header elevated style={{backgroundColor: '#fff'}}>
@@ -133,4 +140,12 @@ const styles = StyleSheet.create({
   emptyName: { fontSize: 17, color: '#BDBDBD', fontStyle: 'italic' },
   mealImage: { width: 50, height: 50, borderRadius: 10, backgroundColor: '#F5F5F5' },
   imagePlaceholder: { width: 50, height: 50, borderRadius: 10, backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#F0F0F0', borderStyle: 'dashed' },
+  loadingContainer: {
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: '#FAFAFA' // Match your app background
+  },
+
+
 });
