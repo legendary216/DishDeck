@@ -64,18 +64,26 @@ export default function DeckScreen() {
     setRefreshing(false);
   };
 
-  const handleLogout = async () => {
-    setIsLoggingOut(true);
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      Alert.alert("Error", error.message);
-      setIsLoggingOut(false);
-    } else {
-      await AsyncStorage.removeItem(CACHE_KEY);
-      router.replace('/'); 
+ const handleLogout = async () => {
+    setLoading(true);
+    try {
+        // 1. Tell Supabase to sign out
+        const { error } = await supabase.auth.signOut();
+        
+        if (error) {
+            Alert.alert("Logout Error", error.message);
+            setLoading(false); // Stop loading if there's an actual error
+        } else {
+            // 2. Clear state and redirect
+            // We DON'T set loading to false here because the 
+            // component will unmount/navigate away anyway.
+            router.replace('/login'); 
+        }
+    } catch (err) {
+        console.error(err);
+        setLoading(false); // Safety catch
     }
-  };
-
+};
   // --- UPDATED LOGIC: NEVER SHOW SAME DISH TWICE ---
   const handleQuickSuggest = () => {
     // 1. Get all valid candidates for this meal type

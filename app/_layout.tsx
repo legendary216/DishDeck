@@ -29,15 +29,15 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!initialized) return;
-    // @ts-ignore
-    const atLoginScreen = segments.length === 0 || segments[0] === 'index'; 
-    // Note: depending on file structure, login might be '/' (empty segments)
 
-    if (!session && !atLoginScreen) {
-      router.replace('/'); 
-    } else if (session && atLoginScreen) {
-      router.replace('/(tabs)');
-    }
+    // Check if current route is 'index' or 'login' (Adjust if your file is named login.tsx)
+    const inAuthGroup = segments[0] === 'login'; 
+
+if (!session && !inAuthGroup) {
+  router.replace('/login'); 
+} else if (session && inAuthGroup) {
+  router.replace('/(tabs)');
+}
   }, [session, initialized, segments]);
 
   if (!initialized) {
