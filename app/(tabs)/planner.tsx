@@ -4,6 +4,7 @@ import { Text, Card, FAB, Chip, ActivityIndicator, IconButton, Portal, Modal, To
 import { supabase } from '../../utils/supabase';
 import { useFocusEffect, router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { usePlan } from '../../context/PlanContext';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
@@ -19,6 +20,7 @@ export default function PlanScreen() {
   const [isShuffling, setIsShuffling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
+
   // Move/Swap State
   const [moveModalVisible, setMoveModalVisible] = useState(false);
   const [sourceDay, setSourceDay] = useState<string | null>(null);
@@ -26,6 +28,27 @@ export default function PlanScreen() {
   
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
   const flatListRef = useRef<FlatList>(null);
+ const { globalPlans, setGlobalPlans } = usePlan();
+
+  const updateGlobalState = (allPlans: any) => {
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = tomorrowDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+    setGlobalPlans({
+        today: {
+            breakfast: allPlans['Breakfast']?.[today],
+            lunch: allPlans['Lunch']?.[today],
+            dinner: allPlans['Dinner']?.[today],
+        },
+        tomorrow: {
+            breakfast: allPlans['Breakfast']?.[tomorrow],
+            lunch: allPlans['Lunch']?.[tomorrow],
+            dinner: allPlans['Dinner']?.[tomorrow],
+        }
+    });
+};
 
   useFocusEffect(
     useCallback(() => {
@@ -68,37 +91,67 @@ export default function PlanScreen() {
   };
 
   const handleShuffle = async () => {
-    const currentType = MEAL_TYPES[activeIndex];
-    setIsShuffling(true); 
-    
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+  const currentType = MEAL_TYPES[activeIndex];
+  setIsShuffling(true); 
 
-    const { data: candidates } = await supabase
-      .from('dishes')
-      .select('id')
-      .eq('user_id', user.id)
-      .ilike('type', `%${currentType}%`);
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
 
-    if (!candidates || candidates.length === 0) {
-      Alert.alert("Empty Deck", `No dishes found for ${currentType}!`);
-      setIsShuffling(false);
-      return;
-    }
+  // 1. Get the candidates (the "deck")
+  const { data: candidates } = await supabase
+    .from('dishes')
+    .select('id, name, image_path') // Get name/image too so we can update Global State
+    .eq('user_id', user.id)
+    .ilike('type', `%${currentType}%`);
 
-    const newRows = DAYS.map(day => ({
-      user_id: user.id,
-      day: day,
-      meal_type: currentType,
-      dish_id: candidates[Math.floor(Math.random() * candidates.length)].id
-    }));
-
-    await supabase.from('weekly_plan').upsert(newRows, { onConflict: 'user_id, day, meal_type' });
-    await fetchFromSupabase();
-    
+  if (!candidates || candidates.length === 0) {
+    Alert.alert("Empty Deck", `No dishes found for ${currentType}!`);
     setIsShuffling(false);
-  };
+    return;
+  }
 
+  // 2. Generate the new selection
+  const newRows = DAYS.map(day => ({
+    user_id: user.id,
+    day: day,
+    meal_type: currentType,
+    dish_id: candidates[Math.floor(Math.random() * candidates.length)].id
+  }));
+
+  // 3. OPTIMISTIC UPDATE: Update Global State immediately
+  // We find the today/tomorrow items from our new selection to update the Dashboard
+  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  const tomorrowName = tomorrowDate.toLocaleDateString('en-US', { weekday: 'long' });
+
+  const todaySelection = candidates.find(c => c.id === newRows.find(r => r.day === todayName)?.dish_id);
+  const tomorrowSelection = candidates.find(c => c.id === newRows.find(r => r.day === tomorrowName)?.dish_id);
+
+  // We merge the new shuffled meal with the existing global state
+  setGlobalPlans({
+    today: {
+      ...globalPlans.today,
+      [currentType.toLowerCase()]: todaySelection
+    },
+    tomorrow: {
+      ...globalPlans.tomorrow,
+      [currentType.toLowerCase()]: tomorrowSelection
+    }
+  });
+
+  // 4. DATABASE UPDATE (Background)
+  // We don't 'await' the fetchFromSupabase anymore for the UI to feel fast
+  try {
+    await supabase.from('weekly_plan').upsert(newRows, { onConflict: 'user_id, day, meal_type' });
+    await fetchFromSupabase(); // Keeps the Planner tab synced
+  } catch (error) {
+    console.error("Background sync failed:", error);
+    // Optional: Alert user if the save failed
+  }
+
+  setIsShuffling(false);
+};
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchFromSupabase();

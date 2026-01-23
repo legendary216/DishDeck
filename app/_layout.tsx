@@ -4,6 +4,7 @@ import { supabase } from '../utils/supabase';
 import { View, ActivityIndicator, Text, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
 import NetInfo, { useNetInfo } from '@react-native-community/netinfo';
+import { PlanProvider } from '../context/PlanContext';
 
 export default function RootLayout() {
   const [session, setSession] = useState<any>(null);
@@ -61,11 +62,13 @@ export default function RootLayout() {
 
   return (
     <PaperProvider>
+      <PlanProvider>
+
       <View style={{ flex: 1 }}>
         
         {/* 2. THE OFFLINE BANNER */}
         {netInfo.isConnected === false && (
-            <View style={{ backgroundColor: '#b00020', padding: 5, alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 50 : 30 }}>
+          <View style={{ backgroundColor: '#b00020', padding: 5, alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 50 : 30 }}>
                 <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>
                     ⚠️ You are offline. Changes may not save.
                 </Text>
@@ -80,6 +83,7 @@ export default function RootLayout() {
           <Stack.Screen name="dish/[id]" options={{ title: 'Dish Details' }} />
         </Stack>
       </View>
+        </PlanProvider>
     </PaperProvider>
   );
 }
