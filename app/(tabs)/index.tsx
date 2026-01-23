@@ -1,320 +1,132 @@
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, FlatList, Alert, Image, TouchableOpacity } from 'react-native';
-import { Text, FAB, ActivityIndicator, Divider, Chip, Button, Card, IconButton, Searchbar } from 'react-native-paper';
+import { ScrollView, View, StyleSheet, RefreshControl, Image, TouchableOpacity } from 'react-native';
+import { Text, Appbar, ActivityIndicator, Divider, Surface } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
-const CACHE_KEY = 'DISHES_CACHE';
-
-export default function DeckScreen() {
-  const [dishes, setDishes] = useState<any[]>([]);
-  
+export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [plans, setPlans] = useState<{ today: any; tomorrow: any }>({ today: null, tomorrow: null });
 
-  // Search State
-  const [searchQuery, setSearchQuery] = useState('');
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const todayIdx = new Date().getDay();
+  const todayName = days[todayIdx];
+  const tomorrowName = days[todayIdx + 1];
 
-  // Quick Suggest State
-  const [quickType, setQuickType] = useState('Lunch');
-  const [suggestion, setSuggestion] = useState<any>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      loadCacheAndFetch();
-    }, [])
-  );
-
-  const loadCacheAndFetch = async () => {
-    try {
-      const cachedData = await AsyncStorage.getItem(CACHE_KEY);
-      if (cachedData) {
-        setDishes(JSON.parse(cachedData));
-        setLoading(false); 
-      }
-    } catch (e) { console.log(e); }
-
-    await fetchFromSupabase();
-  };
-
-  const fetchFromSupabase = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (user) {
-      const { data, error } = await supabase
-        .from('dishes')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (data) {
-        setDishes(data);
-        AsyncStorage.setItem(CACHE_KEY, JSON.stringify(data));
-      }
-    }
-    setLoading(false);
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchFromSupabase();
-    setRefreshing(false);
-  };
-
- const handleLogout = async () => {
+  const fetchPlans = async () => {
     setLoading(true);
     try {
-        // 1. Tell Supabase to sign out
-        const { error } = await supabase.auth.signOut();
-        
-        if (error) {
-            Alert.alert("Logout Error", error.message);
-            setLoading(false); // Stop loading if there's an actual error
-        } else {
-            // 2. Clear state and redirect
-            // We DON'T set loading to false here because the 
-            // component will unmount/navigate away anyway.
-            router.replace('/login'); 
-        }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('weekly_plan')
+        .select(`day, meal_type, dish:dishes(id, name, image_path)`)
+        .eq('user_id', user.id)
+        .in('day', [todayName, tomorrowName]);
+
+      if (error) throw error;
+
+      if (data) {
+        const mapDay = (dayName: string) => ({
+          breakfast: data.find(m => m.day === dayName && m.meal_type === 'Breakfast')?.dish,
+          lunch: data.find(m => m.day === dayName && m.meal_type === 'Lunch')?.dish,
+          dinner: data.find(m => m.day === dayName && m.meal_type === 'Dinner')?.dish,
+        });
+
+        setPlans({ today: mapDay(todayName), tomorrow: mapDay(tomorrowName) });
+      }
     } catch (err) {
-        console.error(err);
-        setLoading(false); // Safety catch
+      console.error(err);
+    } finally {
+      setLoading(false);
     }
-};
-  // --- UPDATED LOGIC: NEVER SHOW SAME DISH TWICE ---
-  const handleQuickSuggest = () => {
-    // 1. Get all valid candidates for this meal type
-    const candidates = dishes.filter(d => 
-        d.type && d.type.toLowerCase().includes(quickType.toLowerCase())
-    );
-
-    if (candidates.length === 0) {
-        Alert.alert("No Options", `You don't have any dishes tagged as ${quickType} yet.`);
-        setSuggestion(null);
-        return;
-    }
-
-    // 2. If we only have 1 dish, we have to show it (we can't switch)
-    if (candidates.length === 1) {
-        setSuggestion(candidates[0]);
-        return;
-    }
-
-    // 3. If we have multiple, filter out the CURRENT suggestion
-    let pool = candidates;
-    if (suggestion) {
-        pool = candidates.filter(d => d.id !== suggestion.id);
-    }
-
-    // 4. Pick from the new pool (which guarantees a change)
-    const randomDish = pool[Math.floor(Math.random() * pool.length)];
-    setSuggestion(randomDish);
   };
 
-  const filteredDishes = dishes.filter(item => {
-    const q = searchQuery.toLowerCase();
-    return item.name.toLowerCase().includes(q) || item.type.toLowerCase().includes(q);
-  });
+  useFocusEffect(useCallback(() => { fetchPlans(); }, []));
 
-  const renderDishRow = ({ item }: { item: any }) => {
-    const rawUrl = item.image_path || '';
-    const imageUrl = rawUrl.trim().replace(/ /g, '%20') || 'https://via.placeholder.com/150';
-
-    return (
-      <TouchableOpacity 
-        style={styles.row} 
-        onPress={() => router.push({ pathname: '/dish/[id]', params: { id: item.id } })}
-      >
-        <Image source={{ uri: imageUrl }} style={styles.thumbnail} resizeMode="cover" />
-        <View style={styles.textContainer}>
-          <Text variant="titleMedium" style={styles.dishName} numberOfLines={1}>{item.name}</Text>
-          <Text variant="bodySmall" style={styles.dishType}>{item.type}</Text>
-        </View>
-        <Text style={{color: '#ccc', fontSize: 20}}>›</Text>
-      </TouchableOpacity>
-    );
-  };
-
-  const getSuggestionImage = () => {
-    if (!suggestion || !suggestion.image_path) return 'https://via.placeholder.com/150';
-    return suggestion.image_path.trim().replace(/ /g, '%20');
-  };
+  // --- MINIMALIST MEAL ROW ---
+  const MealRow = ({ label, dish }: { label: string; dish: any }) => (
+    <TouchableOpacity 
+      style={styles.mealRow}
+      onPress={() => dish ? router.push({ pathname: '/dish/[id]', params: { id: dish.id } }) : router.push('/(tabs)/planner')}
+    >
+      <View style={styles.textSide}>
+        <Text style={styles.mealLabel}>{label.toUpperCase()}</Text>
+        <Text numberOfLines={1} style={dish ? styles.dishName : styles.emptyName}>
+          {dish ? dish.name : 'Tap to plan'}
+        </Text>
+      </View>
+      
+      {dish?.image_path ? (
+        <Image source={{ uri: dish.image_path }} style={styles.mealImage} />
+      ) : (
+        <View style={styles.imagePlaceholder} />
+      )}
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text variant="headlineMedium" style={styles.title}>My Kitchen</Text>
-        
-        {isLoggingOut ? (
-            <ActivityIndicator animating={true} color="red" size="small" />
-        ) : (
-            <TouchableOpacity onPress={handleLogout}>
-                <Text style={{color: 'red', fontWeight: 'bold'}}>Log Out</Text>
-            </TouchableOpacity>
-        )}
-      </View>
+      <Appbar.Header elevated style={{backgroundColor: '#fff'}}>
+        <Appbar.Content title="My Kitchen" titleStyle={styles.appTitle} />
+        <Appbar.Action icon="calendar-outline" onPress={() => router.push('/(tabs)/planner')} />
+      </Appbar.Header>
 
-      <View style={styles.suggestContainer}>
-        <Text variant="titleLarge" style={{marginBottom: 12, fontWeight:'bold', color:'#333'}}>
-            Quick Decide 🎲
-        </Text>
-        
-        <View style={styles.chipRow}>
-            {MEAL_TYPES.map(type => (
-                <Chip 
-                    key={type} 
-                    selected={quickType === type} 
-                    onPress={() => {
-                        setQuickType(type);
-                        setSuggestion(null); // Reset when changing category
-                    }}
-                    style={styles.chip}
-                    textStyle={{ fontSize: 14 }}
-                    showSelectedOverlay
-                >
-                    {type}
-                </Chip>
-            ))}
-        </View>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchPlans} />}
+      >
+        <Text style={styles.sectionHeader}>Today</Text>
+        <Surface style={styles.sectionCard} elevation={1}>
+          <MealRow label="Breakfast" dish={plans.today?.breakfast} />
+          <Divider />
+          <MealRow label="Lunch" dish={plans.today?.lunch} />
+          <Divider />
+          <MealRow label="Dinner" dish={plans.today?.dinner} />
+        </Surface>
 
-        {!suggestion ? (
-            <Button 
-                mode="contained" 
-                onPress={handleQuickSuggest} 
-                style={styles.suggestBtn}
-                contentStyle={{ height: 55 }} 
-                labelStyle={{ fontSize: 18, fontWeight: 'bold' }}
-            >
-                Pick for Me
-            </Button>
-        ) : (
-            <Card style={styles.resultCard}>
-                <View style={styles.resultContent}>
-                    <Image 
-                        source={{ uri: getSuggestionImage() }} 
-                        style={styles.resultImage} 
-                    />
-                    
-                    <View style={{flex: 1, marginLeft: 15, justifyContent: 'center'}}>
-                        <Text style={{color:'#6200ee', fontWeight:'bold', marginBottom: 4, fontSize: 13}}>
-                            How about...
-                        </Text>
-                        <Text variant="headlineSmall" style={{fontWeight:'bold', lineHeight: 28}} numberOfLines={2}>
-                            {suggestion.name}
-                        </Text>
-                    </View>
-                    
-                    <IconButton 
-                        icon="refresh" 
-                        iconColor="#6200ee" 
-                        size={30} 
-                        onPress={handleQuickSuggest} 
-                    />
-                </View>
-            </Card>
-        )}
-      </View>
-      
-      <View style={styles.listHeaderContainer}>
-        <Searchbar
-            placeholder="Search your dishes..."
-            onChangeText={setSearchQuery}
-            value={searchQuery}
-            style={styles.searchBar}
-            inputStyle={{minHeight: 0}} 
-        />
-        <Text style={styles.listHeaderText}>
-             {searchQuery ? `Searching for "${searchQuery}"` : "Here is your list 📜"}
-        </Text>
-      </View>
-
-      {loading && !refreshing && dishes.length === 0 ? (
-        <ActivityIndicator animating={true} size="large" style={{marginTop: 50}} />
-      ) : (
-        <FlatList
-            data={filteredDishes} 
-            keyExtractor={(item) => item.id.toString()}
-            contentContainerStyle={{ paddingBottom: 100 }}
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            ItemSeparatorComponent={() => <Divider />}
-            ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-                {searchQuery ? (
-                    <Text style={{color: 'gray'}}>No dishes match "{searchQuery}"</Text>
-                ) : (
-                    <>
-                        <Text style={{fontSize: 50, marginBottom: 10}}>🍲</Text>
-                        <Text style={{color: 'gray'}}>No dishes yet.</Text>
-                    </>
-                )}
-            </View>
-            }
-            renderItem={renderDishRow}
-        />
-      )}
-
-      <FAB
-        icon="plus"
-        style={styles.fab}
-        onPress={() => router.push('/add-dish')}
-        color="white"
-      />
+        <Text style={[styles.sectionHeader, { marginTop: 30 }]}>Tomorrow</Text>
+        <Surface style={styles.sectionCard} elevation={1}>
+          <MealRow label="Breakfast" dish={plans.tomorrow?.breakfast} />
+          <Divider />
+          <MealRow label="Lunch" dish={plans.tomorrow?.lunch} />
+          <Divider />
+          <MealRow label="Dinner" dish={plans.tomorrow?.dinner} />
+        </Surface>
+      </ScrollView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  header: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', 
-    paddingHorizontal: 20, marginTop: 50, marginBottom: 15 
-  },
-  title: { fontWeight: 'bold' },
-
-  suggestContainer: { paddingHorizontal: 20, paddingBottom: 15 },
-  chipRow: { flexDirection: 'row', gap: 10, marginBottom: 15 },
-  chip: { backgroundColor: '#f0f0f0', paddingVertical: 2 },
-  suggestBtn: { borderRadius: 12, justifyContent: 'center' },
-  
-  resultCard: { backgroundColor: '#ede7f6', marginTop: 5, borderRadius: 16 },
-  resultContent: { flexDirection: 'row', padding: 12, alignItems: 'center' },
-  resultImage: { width: 90, height: 90, borderRadius: 12, backgroundColor: '#ddd' }, 
-
-  listHeaderContainer: { 
-    backgroundColor: '#f9f9f9', 
-    paddingVertical: 15, 
-    paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: '#eee'
-  },
-  searchBar: {
-    marginBottom: 10,
-    backgroundColor: 'white',
-    elevation: 0, 
-    borderWidth: 1,
-    borderColor: '#ddd',
-    height: 45,
-  },
-  listHeaderText: {
-    color: '#777',
-    fontWeight: 'bold',
-    fontSize: 14,
-    textTransform: 'uppercase',
+  container: { flex: 1, backgroundColor: '#FAFAFA' },
+  appTitle: { fontWeight: '700', fontSize: 20, letterSpacing: -0.5 },
+  scrollContent: { padding: 20 },
+  sectionHeader: { 
+    fontSize: 14, 
+    fontWeight: '700', 
+    color: '#9E9E9E', 
+    textTransform: 'uppercase', 
     letterSpacing: 1,
-    marginTop: 5
+    marginBottom: 10,
+    marginLeft: 5
   },
-
-  row: { flexDirection: 'row', alignItems: 'center', padding: 15, backgroundColor: 'white' },
-  thumbnail: { width: 60, height: 60, borderRadius: 8, backgroundColor: '#f0f0f0' },
-  textContainer: { flex: 1, marginLeft: 15, justifyContent: 'center' },
-  dishName: { fontWeight: 'bold', marginBottom: 2 },
-  dishType: { color: 'gray' },
-
-  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#6200ee' },
-  emptyContainer: { alignItems: 'center', marginTop: 50 }
+  sectionCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  mealRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#FFF'
+  },
+  textSide: { flex: 1 },
+  mealLabel: { fontSize: 10, fontWeight: '700', color: '#6200EE', marginBottom: 2 },
+  dishName: { fontSize: 17, fontWeight: '600', color: '#212121' },
+  emptyName: { fontSize: 17, color: '#BDBDBD', fontStyle: 'italic' },
+  mealImage: { width: 50, height: 50, borderRadius: 10, backgroundColor: '#F5F5F5' },
+  imagePlaceholder: { width: 50, height: 50, borderRadius: 10, backgroundColor: '#FAFAFA', borderWidth: 1, borderColor: '#F0F0F0', borderStyle: 'dashed' },
 });

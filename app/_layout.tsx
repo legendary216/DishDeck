@@ -30,16 +30,27 @@ export default function RootLayout() {
   useEffect(() => {
     if (!initialized) return;
 
-    // Check if current route is 'index' or 'login' (Adjust if your file is named login.tsx)
-    const inAuthGroup = segments[0] === 'login'; 
+    // 1. Identify where the user is
+    const inAuthGroup = segments[0] === 'login';
+    // Check if they are at the absolute root 'index' (outside tabs)
+    const atRoot = segments.length === 0 || segments[0] === 'index';
 
-if (!session && !inAuthGroup) {
-  router.replace('/login'); 
-} else if (session && inAuthGroup) {
-  router.replace('/(tabs)');
-}
+    if (!session) {
+      // If not logged in and not already going to login, force it
+      if (!inAuthGroup) {
+        console.log("Redirecting to login...");
+        router.replace('/login');
+      }
+    } else {
+      // If logged in and stuck on login or root, push to the Dashboard
+      if (inAuthGroup || atRoot) {
+        console.log("Redirecting to dashboard...");
+        router.replace('/(tabs)');
+      }
+    }
   }, [session, initialized, segments]);
 
+  
   if (!initialized) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
