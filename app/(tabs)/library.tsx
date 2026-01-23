@@ -49,7 +49,12 @@ export default function LibraryScreen() {
     setLoading(false);
   }
 };
-
+useFocusEffect(
+  useCallback(() => {
+    setSearchQuery('');
+    setFilteredDishes(dishes); // Restores the full list from memory
+  }, [dishes]) 
+);
  useEffect(() => {
   // Listen for the session to be ready
   const checkUserAndFetch = async () => {
@@ -58,6 +63,8 @@ export default function LibraryScreen() {
       fetchDishes();
     }
   };
+
+  
 
   checkUserAndFetch();
 }, []);
