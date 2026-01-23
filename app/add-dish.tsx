@@ -29,10 +29,8 @@ export default function AddDishScreen() {
 
   setIsGenerating(true);
   try {
-    const prompt = `Provide the ingredients and recipe for "${name}". 
-    Format the response as plain text. 
-    Start with "INGREDIENTS:" followed by the list, 
-    then "RECIPE:" followed by steps. Keep it concise.`;
+    const prompt = `List ingredients and steps for"${name}". 
+    Format: INGREDIENTS: (list) RECIPE: (short steps). No intro.`;
 
     const result = await geminiModel.generateContent(prompt);
     const text = result.response.text();
