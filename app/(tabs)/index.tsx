@@ -70,6 +70,10 @@ export default function DashboardScreen() {
     <View style={styles.container}>
       <Appbar.Header elevated style={{backgroundColor: '#fff'}}>
         <Appbar.Content title="My Kitchen" titleStyle={styles.appTitle} />
+        <Appbar.Action 
+    icon="cart-outline" 
+    onPress={() => router.push('/shop')} 
+  />
         <Appbar.Action icon="calendar-outline" onPress={() => router.push('/(tabs)/planner')} />
       </Appbar.Header>
 

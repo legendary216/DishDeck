@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet, SectionList, Alert, ScrollView } from 'react-native';
 import { Text, Checkbox, Button, FAB, IconButton, ActivityIndicator, Portal, Modal, TouchableRipple } from 'react-native-paper';
-import { supabase } from '../../utils/supabase';
+import { supabase } from '../utils/supabase';
 import { useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
