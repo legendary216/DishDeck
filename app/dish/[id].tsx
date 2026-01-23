@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert, Image, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert, Image, Linking ,TouchableOpacity} from 'react-native';
 import { TextInput, Button, Text, SegmentedButtons, ActivityIndicator, IconButton } from 'react-native-paper';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../../utils/supabase';
@@ -107,93 +107,207 @@ export default function DishDetailScreen() {
 
   if (loading) return <ActivityIndicator style={styles.loader} size="large" />;
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      
-      <View style={styles.topBar}>
-        <Button icon="arrow-left" mode="text" onPress={() => router.back()}>Back</Button>
-        <View style={{flexDirection: 'row'}}>
-            {!isEditing && (
-                <IconButton icon="trash-can" iconColor="red" onPress={handleDelete} />
-            )}
-            <Button mode="text" onPress={() => setIsEditing(!isEditing)}>
-                {isEditing ? "Cancel" : "Edit"}
-            </Button>
-        </View>
-      </View>
-
-      <Image source={{ uri: imagePath || 'https://via.placeholder.com/300' }} style={styles.image} />
-      
-      <TextInput
-        label="Name"
-        value={name}
-        onChangeText={setName}
-        mode="outlined"
-        disabled={!isEditing}
-        style={styles.input}
-      />
-
-      <View style={styles.input}>
-        <Text variant="bodyMedium" style={{marginBottom: 5, color: 'gray'}}>Type</Text>
-        {isEditing ? (
-            <SegmentedButtons
-                value={type}
-                onValueChange={setType}
-                buttons={[
-                { value: 'Breakfast', label: 'Breakfast' },
-                { value: 'Lunch', label: 'Lunch' },
-                { value: 'Dinner', label: 'Dinner' },
-                ]}
+ return (
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.content}>
+        
+        {/* HERO IMAGE SECTION */}
+        <View style={styles.imageContainer}>
+          <Image 
+            source={{ uri: imagePath || 'https://via.placeholder.com/300' }} 
+            style={styles.image} 
+          />
+          {/* OVERLAY BUTTONS */}
+          <View style={styles.overlayTop}>
+            <IconButton 
+              icon="arrow-left" 
+              containerColor="rgba(255,255,255,0.8)" 
+              onPress={() => router.back()} 
             />
-        ) : (
-            <TextInput value={type} mode="outlined" disabled />
-        )}
-      </View>
+            <View style={{flexDirection: 'row'}}>
+               {!isEditing && (
+                 <IconButton 
+                   icon="trash-can-outline" 
+                   iconColor="#FF5252" 
+                   containerColor="rgba(255,255,255,0.8)" 
+                   onPress={handleDelete} 
+                 />
+               )}
+               <IconButton 
+                 icon={isEditing ? "close" : "pencil-outline"} 
+                 containerColor={isEditing ? "#FF5252" : "rgba(255,255,255,0.8)"}
+                 iconColor={isEditing ? "white" : "black"}
+                 onPress={() => setIsEditing(!isEditing)} 
+               />
+            </View>
+          </View>
+        </View>
 
-      <TextInput
-        label="Ingredients"
-        value={ingredients}
-        onChangeText={setIngredients}
-        mode="outlined"
-        multiline
-        numberOfLines={4}
-        disabled={!isEditing}
-        style={styles.input}
-      />
+        <View style={styles.detailsBox}>
+          {/* TITLE & CATEGORY */}
+          {isEditing ? (
+            <TextInput
+              label="Dish Name"
+              value={name}
+              onChangeText={setName}
+              mode="outlined"
+              style={styles.input}
+            />
+          ) : (
+            <Text style={styles.dishTitle}>{name}</Text>
+          )}
 
-      <TextInput
-        label="YouTube Link"
-        value={youtubeLink}
-        onChangeText={setYoutubeLink}
-        mode="outlined"
-        disabled={!isEditing}
-        right={<TextInput.Icon icon="youtube" onPress={openLink} forceTextInputFocus={false}/>}
-        style={styles.input}
-      />
+          <View style={styles.badgeRow}>
+             <View style={styles.typeBadge}>
+               <Text style={styles.typeText}>{type}</Text>
+             </View>
+          </View>
 
-      {isEditing && (
-        <Button mode="contained" onPress={handleUpdate} style={styles.saveButton}>
-          Save Changes
-        </Button>
-      )}
+          {isEditing && (
+             <View style={{marginBottom: 20}}>
+               <Text style={styles.sectionLabel}>Change Category</Text>
+               <SegmentedButtons
+                 value={type}
+                 onValueChange={setType}
+                 buttons={[
+                   { value: 'Breakfast', label: 'B-fast' },
+                   { value: 'Lunch', label: 'Lunch' },
+                   { value: 'Dinner', label: 'Dinner' },
+                 ]}
+               />
+             </View>
+          )}
 
-      {!isEditing && youtubeLink ? (
-        <Button icon="youtube" mode="contained" onPress={openLink} style={styles.ytButton} buttonColor="#FF0000">
-            Watch Recipe
-        </Button>
-      ) : null}
+          <View style={styles.separator} />
 
-    </ScrollView>
+          {/* INGREDIENTS SECTION */}
+          <View style={styles.sectionHeader}>
+            <IconButton icon="fridge-outline" size={20} />
+            <Text style={styles.sectionLabel}>Ingredients</Text>
+          </View>
+          
+       <View style={[styles.ingredientsContainer, !isEditing && styles.viewingModeContainer]}>
+  <TextInput
+    value={ingredients}
+    onChangeText={setIngredients}
+    mode="flat"
+    multiline
+    // FIX: Use readOnly instead of disabled for better visibility
+    readOnly={!isEditing} 
+    placeholder="No ingredients listed..."
+    style={styles.ingredientsInput}
+    underlineColor="transparent"
+    activeUnderlineColor="transparent"
+    // This ensures the text color remains high-contrast
+    textColor="#2C3E50" 
+  />
+</View>
+          {/* YOUTUBE SECTION */}
+          <View style={styles.sectionHeader}>
+            <IconButton icon="youtube" size={20} iconColor="#FF0000" />
+            <Text style={styles.sectionLabel}>Video Tutorial</Text>
+          </View>
+
+          {isEditing ? (
+            <TextInput
+              value={youtubeLink}
+              onChangeText={setYoutubeLink}
+              mode="outlined"
+              placeholder="Paste YouTube Link"
+              style={styles.input}
+            />
+          ) : youtubeLink ? (
+            <TouchableOpacity onPress={openLink} style={styles.ytCard}>
+               <Text style={styles.ytCardText}>Watch on YouTube</Text>
+               <IconButton icon="open-in-new" size={18} iconColor="white" />
+            </TouchableOpacity>
+          ) : (
+            <Text style={styles.noLinkText}>No video link provided</Text>
+          )}
+
+          {isEditing && (
+            <Button 
+              mode="contained" 
+              onPress={handleUpdate} 
+              style={styles.saveButton}
+              contentStyle={{height: 50}}
+            >
+              Update Dish
+            </Button>
+          )}
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  content: { padding: 20, paddingBottom: 50 },
-  loader: { marginTop: 50 },
-  topBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  image: { width: '100%', height: 200, borderRadius: 12, marginBottom: 20 },
-  input: { marginBottom: 15 },
-  saveButton: { marginTop: 10 },
-  ytButton: { marginTop: 20 }
+  container: { flex: 1, backgroundColor: '#F8F9FA' },
+  content: { paddingBottom: 50 },
+  loader: { flex: 1, justifyContent: 'center' },
+  
+  // Header Image
+  imageContainer: { width: '100%', height: 300, position: 'relative' },
+  image: { width: '100%', height: '100%' },
+  overlayTop: { 
+    position: 'absolute', top: 40, left: 10, right: 10, 
+    flexDirection: 'row', justifyContent: 'space-between' 
+  },
+
+  // Content Box
+  detailsBox: { 
+    marginTop: -30, backgroundColor: '#F8F9FA', 
+    borderTopLeftRadius: 30, borderTopRightRadius: 30,
+    padding: 25, flex: 1
+  },
+  dishTitle: { fontSize: 28, fontWeight: 'bold', color: '#1A1A1A', marginBottom: 10 },
+  badgeRow: { flexDirection: 'row', marginBottom: 20 },
+  typeBadge: { 
+    backgroundColor: '#EADDFF', paddingHorizontal: 15, paddingVertical: 5, 
+    borderRadius: 20 
+  },
+  typeText: { color: '#6750A4', fontWeight: 'bold', fontSize: 12 },
+  
+  separator: { height: 1, backgroundColor: '#E0E0E0', marginVertical: 10 },
+
+  // Sections
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginLeft: -10 },
+  sectionLabel: { fontSize: 16, fontWeight: 'bold', color: '#444' },
+  // ingredientsInput: { 
+  //   backgroundColor: 'transparent', fontSize: 16, lineHeight: 24, 
+  //   paddingHorizontal: 0, marginBottom: 20 
+  // },
+  disabledInput: { color: '#333', opacity: 1 },
+  
+  // YouTube Card
+  ytCard: { 
+    backgroundColor: '#FF0000', borderRadius: 12, paddingHorizontal: 20,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    height: 55, marginTop: 5
+  },
+  ytCardText: { color: 'white', fontWeight: 'bold', fontSize: 16 },
+  noLinkText: { color: '#888', fontStyle: 'italic', marginLeft: 10 },
+
+  input: { marginBottom: 15, backgroundColor: 'white' },
+  saveButton: { marginTop: 30, borderRadius: 12 },
+
+  ingredientsContainer: {
+    borderRadius: 12,
+    backgroundColor: '#ffffff', // White background to pop against the light gray
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    marginBottom: 20,
+    overflow: 'hidden',
+  },
+  viewingModeContainer: {
+    backgroundColor: '#F1F3F5', // Light contrast for viewing mode
+    borderColor: 'transparent',
+  },
+  ingredientsInput: { 
+    backgroundColor: 'transparent', 
+    fontSize: 16, 
+    lineHeight: 24,
+    minHeight: 100,
+    paddingHorizontal: 10,
+  },
 });
