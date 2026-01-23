@@ -3,6 +3,7 @@ import { View, StyleSheet, FlatList, RefreshControl, Image } from 'react-native'
 import { Text, Searchbar, FAB, List, Divider, ActivityIndicator } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router ,useFocusEffect} from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function LibraryScreen() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -11,43 +12,55 @@ export default function LibraryScreen() {
   const [loading, setLoading] = useState(true);
 
   // 1. Fetch Master List
-  const fetchDishes = async () => {
-    setLoading(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+ const fetchDishes = async () => {
+  try {
+    // 1. Check Cache first
+    const cachedData = await AsyncStorage.getItem('library_cache');
+    if (cachedData) {
+      const parsed = JSON.parse(cachedData);
+      setDishes(parsed);
+      setFilteredDishes(parsed);
+      // We have data! Turn off the spinner immediately.
+      setLoading(false); 
+    } else {
+      // ONLY show the spinner if we have no cache
+      setLoading(true);
+    }
 
-      const { data, error } = await supabase
-        .from('dishes')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('name', { ascending: true });
+    // 2. Fetch from Supabase (Silent Background Fetch)
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
 
-      if (error) throw error;
-      setDishes(data || []);
-      setFilteredDishes(data || []);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+    const { data, error } = await supabase
+      .from('dishes')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('name');
+
+    if (data) {
+      setDishes(data);
+      setFilteredDishes(data);
+      await AsyncStorage.setItem('library_cache', JSON.stringify(data));
+    }
+  } catch (e) {
+    console.error(e);
+  } finally {
+    // Final safety turn-off
+    setLoading(false);
+  }
+};
+
+ useEffect(() => {
+  // Listen for the session to be ready
+  const checkUserAndFetch = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      fetchDishes();
     }
   };
 
-  useFocusEffect(
-  useCallback(() => {
-    // This runs when you ENTER the tab
-    return () => {
-      // This runs when you LEAVE the tab (Blur)
-      setSearchQuery('');
-      setFilteredDishes(dishes); // Reset the list to show everything
-    };
-  }, [dishes]) 
-);
-
-  useEffect(() => {
-    fetchDishes();
-  }, []);
-
+  checkUserAndFetch();
+}, []);
   // 2. Client-Side Search Logic
   const onChangeSearch = (query: string) => {
     setSearchQuery(query);
