@@ -4,7 +4,8 @@ import { TextInput, Button, Text, Chip, HelperText } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../utils/supabase';
 import { router } from 'expo-router';
-
+import { geminiModel } from '../utils/gemini'; // Adjust the path if your folders are different
+import { ActivityIndicator } from 'react-native-paper';
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
 
 export default function AddDishScreen() {
@@ -17,6 +18,40 @@ export default function AddDishScreen() {
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+
+
+  const generateAIContent = async () => {
+  if (!name.trim()) {
+    Alert.alert("Error", "Please enter a dish name first.");
+    return;
+  }
+
+  setIsGenerating(true);
+  try {
+    const prompt = `Provide the ingredients and recipe for "${name}". 
+    Format the response as plain text. 
+    Start with "INGREDIENTS:" followed by the list, 
+    then "RECIPE:" followed by steps. Keep it concise.`;
+
+    const result = await geminiModel.generateContent(prompt);
+    const text = result.response.text();
+
+    // Split the text to fill both boxes
+    const parts = text.split("RECIPE:");
+    const ingredientsPart = parts[0].replace("INGREDIENTS:", "").trim();
+    const recipePart = parts[1] ? parts[1].trim() : "";
+
+    setIngredients(ingredientsPart);
+    setRecipe(recipePart);
+
+  } catch (error) {
+    console.error(error);
+    Alert.alert("AI Error", "Could not generate content. Check your API key or connection.");
+  } finally {
+    setIsGenerating(false);
+  }
+};
 
   // REFRESH HANDLER (Pull to clear form)
   const onRefresh = React.useCallback(() => {
@@ -152,6 +187,13 @@ export default function AddDishScreen() {
         onChangeText={setName}
         mode="outlined"
         style={styles.input}
+        right={
+    <TextInput.Icon 
+      icon={isGenerating ? "loading" : "auto-fix"} 
+      onPress={generateAIContent}
+      disabled={isGenerating}
+    />
+  }
       />
 
       <Text variant="titleMedium" style={styles.label}>Meal Type *</Text>
@@ -175,26 +217,45 @@ export default function AddDishScreen() {
         })}
       </View>
 
-      <TextInput
-        label="Ingredients (Optional)"
-        value={ingredients}
-        onChangeText={setIngredients}
-        mode="outlined"
-        multiline
-        numberOfLines={3}
-        style={styles.input}
-        placeholder="e.g. 2 Eggs, Bread..."
-      />
-      
-      <TextInput
-        label="Recipe / Notes (Optional)"
-        value={recipe}
-        onChangeText={setRecipe}
-        mode="outlined"
-        multiline
-        numberOfLines={4}
-        style={styles.input}
-      />
+      {/* INGREDIENTS SECTION */}
+<View style={{ minHeight: 100, justifyContent: 'center' }}>
+  {isGenerating ? (
+    <View style={styles.aiLoadingContainer}>
+      <ActivityIndicator animating={true} color="#6200ee" />
+      <Text style={styles.aiLoadingText}>Gemini is cooking up ingredients...</Text>
+    </View>
+  ) : (
+    <TextInput
+      label="Ingredients (Optional)"
+      value={ingredients}
+      onChangeText={setIngredients}
+      mode="outlined"
+      multiline
+      numberOfLines={3}
+      style={styles.input}
+    />
+  )}
+</View>
+
+{/* RECIPE SECTION */}
+<View style={{ minHeight: 120, justifyContent: 'center' }}>
+  {isGenerating ? (
+    <View style={styles.aiLoadingContainer}>
+      <ActivityIndicator animating={true} color="#6200ee" />
+      <Text style={styles.aiLoadingText}>Writing the instructions...</Text>
+    </View>
+  ) : (
+    <TextInput
+      label="Recipe / Notes (Optional)"
+      value={recipe}
+      onChangeText={setRecipe}
+      mode="outlined"
+      multiline
+      numberOfLines={4}
+      style={styles.input}
+    />
+  )}
+</View>
 
       <TextInput
         label="YouTube Link (Optional)"
@@ -244,5 +305,23 @@ const styles = StyleSheet.create({
   placeholder: { 
     width: '100%', height: 150, borderRadius: 10, backgroundColor: '#f0f0f0', 
     justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed'
-  }
+  },
+  aiLoadingContainer: {
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 20,
+  backgroundColor: '#f5f5f5',
+  borderRadius: 8,
+  borderWidth: 1,
+  borderColor: '#e0e0e0',
+  borderStyle: 'dashed',
+  marginBottom: 15
+},
+aiLoadingText: {
+  marginTop: 10,
+  color: '#6200ee',
+  fontSize: 12,
+  fontWeight: 'bold',
+  fontStyle: 'italic'
+},
 });
