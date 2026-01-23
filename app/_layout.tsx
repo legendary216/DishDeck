@@ -1,14 +1,18 @@
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { supabase } from '../utils/supabase';
-import { View, ActivityIndicator } from 'react-native';
+import { View, ActivityIndicator, Text, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { Provider as PaperProvider } from 'react-native-paper';
+import NetInfo, { useNetInfo } from '@react-native-community/netinfo';
 
 export default function RootLayout() {
   const [session, setSession] = useState<any>(null);
   const [initialized, setInitialized] = useState(false);
   const segments = useSegments();
   const router = useRouter();
+  
+  // 1. LISTEN TO NETWORK STATUS
+  const netInfo = useNetInfo();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -25,17 +29,13 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (!initialized) return;
-
-    // Check if we are currently on the "login" screen
-    // (We check if the first segment is 'login' OR if we are at root and index is missing)
-    const inAuthGroup = segments[0] === '(tabs)';
-    const atLoginScreen = segments[0] === 'login' || segments.length === 0;
+    // @ts-ignore
+    const atLoginScreen = segments.length === 0 || segments[0] === 'index'; 
+    // Note: depending on file structure, login might be '/' (empty segments)
 
     if (!session && !atLoginScreen) {
-      // 1. Logged Out? -> Go to Login
-      router.replace('/login'); 
+      router.replace('/'); 
     } else if (session && atLoginScreen) {
-      // 2. Logged In? -> Go to Tabs
       router.replace('/(tabs)');
     }
   }, [session, initialized, segments]);
@@ -50,15 +50,25 @@ export default function RootLayout() {
 
   return (
     <PaperProvider>
-      <Stack screenOptions={{ headerShown: false }}>
-        {/* CHANGE 1: Point to 'login' instead of 'index' */}
-        <Stack.Screen name="login" />
+      <View style={{ flex: 1 }}>
         
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="add-dish" options={{ presentation: 'modal', title: 'Add Dish' }} />
-        <Stack.Screen name="pick-dish" options={{ presentation: 'modal', title: 'Pick Dish' }} />
-        <Stack.Screen name="dish/[id]" options={{ title: 'Dish Details' }} />
-      </Stack>
+        {/* 2. THE OFFLINE BANNER */}
+        {netInfo.isConnected === false && (
+            <View style={{ backgroundColor: '#b00020', padding: 5, alignItems: 'center', paddingTop: Platform.OS === 'ios' ? 50 : 30 }}>
+                <Text style={{ color: 'white', fontWeight: 'bold', fontSize: 12 }}>
+                    ⚠️ You are offline. Changes may not save.
+                </Text>
+            </View>
+        )}
+
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="add-dish" options={{ presentation: 'modal', title: 'Add Dish' }} />
+          <Stack.Screen name="pick-dish" options={{ presentation: 'modal', title: 'Pick Dish' }} />
+          <Stack.Screen name="dish/[id]" options={{ title: 'Dish Details' }} />
+        </Stack>
+      </View>
     </PaperProvider>
   );
 }

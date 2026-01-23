@@ -155,7 +155,10 @@ export default function ShoppingScreen() {
     setSelectedDayToImport(null);
   };
 
-  const toggleItem = async (id: number, currentStatus: boolean) => {
+ const toggleItem = async (id: number, currentStatus: boolean) => {
+    // 1. OPTIMISTIC UPDATE (Update UI immediately)
+    const previousSections = [...sections]; // Keep a backup
+    
     const newSections = sections.map(section => ({
       ...section,
       data: section.data.map((item: any) => 
@@ -166,12 +169,23 @@ export default function ShoppingScreen() {
     setSections(newSections);
     AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newSections));
 
+    // 2. SEND TO DB
     const { error } = await supabase
       .from('shopping_list')
       .update({ is_bought: !currentStatus })
       .eq('id', id);
 
-    if (error) fetchFromSupabase();
+    // 3. ERROR HANDLING (Rollback if failed)
+    if (error) {
+      console.error("Update failed:", error);
+      
+      // Revert UI
+      setSections(previousSections);
+      AsyncStorage.setItem(CACHE_KEY, JSON.stringify(previousSections));
+      
+      // Tell User
+      Alert.alert("Sync Error", "Could not update item. Please check connection.");
+    }
   };
 
   const clearList = async () => {
