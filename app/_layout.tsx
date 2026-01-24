@@ -5,6 +5,7 @@ import { View, ActivityIndicator, Text, SafeAreaView, Platform, StatusBar } from
 import { Provider as PaperProvider } from 'react-native-paper';
 import NetInfo, { useNetInfo } from '@react-native-community/netinfo';
 import { PlanProvider } from '../context/PlanContext';
+import { theme } from '../constants/theme';
 
 export default function RootLayout() {
   const [session, setSession] = useState<any>(null);
@@ -61,7 +62,7 @@ export default function RootLayout() {
   }
 
   return (
-    <PaperProvider>
+    <PaperProvider theme={theme}>
       <PlanProvider>
 
       <View style={{ flex: 1 }}>
