@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { StyleSheet, View, Alert, KeyboardAvoidingView, Platform, ScrollView, RefreshControl } from 'react-native';
-import { TextInput, Button, Title, useTheme, Text, Portal, Modal, Avatar } from 'react-native-paper';
+import { TextInput, Button, useTheme, Text, Portal, Modal, Avatar } from 'react-native-paper';
 import { supabase } from '../utils/supabase';
 
 export default function LoginScreen() {
@@ -102,7 +102,7 @@ export default function LoginScreen() {
         contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]} 
         keyboardShouldPersistTaps="handled"
       >
-        <Title style={[styles.title, { color: theme.colors.primary }]}>DishDeck</Title>
+       <Text variant="headlineLarge" style={styles.title}>DishDeck</Text>
         <Text style={styles.subtitle}>{isLoginMode ? "Welcome back!" : "Join the kitchen."}</Text>
         
         <TextInput label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" style={styles.input} mode="outlined" />

@@ -74,7 +74,7 @@ export default function DashboardScreen() {
       <TouchableRipple 
         onPress={() => isPlanned 
           ? router.push({ pathname: '/dish/[id]', params: { id: dish.id } }) 
-          : router.push('/(tabs)/planner')
+          : router.push('/add-dish')
         }
         rippleColor={theme.colors.primaryContainer}
       >

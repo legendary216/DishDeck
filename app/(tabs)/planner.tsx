@@ -154,7 +154,7 @@ export default function PlanScreen() {
   };
 
   const openPicker = (day: string, type: string) => {
-    router.push({ pathname: '/pick-dish', params: { day, mealType: type } });
+    router.push({ pathname: '/add-dish', params: { day, mealType: type } });
   };
 
  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
