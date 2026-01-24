@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   subtitle: { textAlign: 'center', marginBottom: 35, opacity: 0.6 },
   input: { marginBottom: 16 },
   button: { paddingVertical: 6, borderRadius: 12 },
-  modal: { padding: 25, margin: 20, borderRadius: 28, maxHeight: '80%' },
+  modal: { padding: 25, margin: 20, borderRadius: 28, maxHeight: '80%',marginBottom: 200 },
   modalTitle: { fontWeight: '800', marginBottom: 10 },
   modalText: { textAlign: 'center', marginBottom: 20, opacity: 0.7 }
 });
