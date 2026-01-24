@@ -1,14 +1,14 @@
 import React, { useState, useCallback } from 'react';
-import { ScrollView, View, StyleSheet, RefreshControl, Image, TouchableOpacity } from 'react-native';
-import { Text, Appbar, ActivityIndicator, Divider, Card, List, useTheme, Avatar } from 'react-native-paper';
+import { ScrollView, View, StyleSheet, RefreshControl, Image, Alert } from 'react-native';
+import { Text, Appbar, ActivityIndicator, Divider, Card, List, useTheme } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
 import { usePlan } from '../../context/PlanContext';
 
 export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
+  const [loggingOut, setLoggingOut] = useState(false); // <--- New State for Logout Spinner
   
-  // Access the theme (Colors, Fonts, Roundness)
   const theme = useTheme(); 
   
   const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
@@ -19,13 +19,10 @@ export default function DashboardScreen() {
   const { globalPlans, setGlobalPlans } = usePlan();
 
   const fetchPlans = async () => {
-    // 1. Context Check (The Guard Clause)
     if (globalPlans.today) {
       setLoading(false); 
       return;
     }
-
-    // 2. Fallback Fetch
     setLoading(true);
 
     try {
@@ -65,21 +62,37 @@ export default function DashboardScreen() {
     }, [])
   );
 
-  // --- REFACTORED MEAL ROW (Uses List.Item for cleaner UI) ---
+  // --- LOGOUT HANDLER ---
+  const handleLogout = async () => {
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+        { text: "Cancel", style: "cancel" },
+        { 
+            text: "Log Out", 
+            style: "destructive", 
+            onPress: async () => {
+                setLoggingOut(true); // 1. Start Spinning
+                const { error } = await supabase.auth.signOut();
+                // 2. Auth listener in _layout.tsx should handle redirect now
+                if (error) {
+                    setLoggingOut(false);
+                    Alert.alert("Error", error.message);
+                }
+            }
+        }
+    ]);
+  };
+
   const MealRow = ({ label, dish }: { label: string; dish: any }) => {
     const isPlanned = !!dish;
 
     return (
       <List.Item
-        // 1. Title: The Dish Name (Large & Bold)
         title={isPlanned ? dish.name : "Tap to plan"}
         titleStyle={{ 
           fontWeight: '700', 
           fontSize: 16, 
           color: isPlanned ? theme.colors.onSurface : theme.colors.outline 
         }}
-        
-        // 2. Description: The Meal Type (Small & Colorful)
         description={label.toUpperCase()}
         descriptionStyle={{ 
           fontSize: 11, 
@@ -87,15 +100,11 @@ export default function DashboardScreen() {
           color: theme.colors.primary, 
           letterSpacing: 1 
         }}
-
-        // 3. Behavior
         onPress={() => isPlanned 
           ? router.push({ pathname: '/dish/[id]', params: { id: dish.id } }) 
           : router.push('/(tabs)/planner')
         }
         rippleColor={theme.colors.primaryContainer}
-        
-        // 4. Right Side: The Image or Placeholder
         right={() => (
           <View style={{ justifyContent: 'center', marginLeft: 10 }}>
             {dish?.image_path ? (
@@ -104,17 +113,14 @@ export default function DashboardScreen() {
                 style={{ width: 56, height: 56, borderRadius: theme.roundness }} 
               />
             ) : (
-              // Empty dashed placeholder
               <View style={{ 
-                width: 56, 
-                height: 56, 
+                width: 56, height: 56, 
                 borderRadius: theme.roundness, 
                 borderWidth: 1, 
                 borderColor: theme.colors.outlineVariant, 
                 borderStyle: 'dashed',
                 backgroundColor: theme.colors.surfaceVariant,
-                justifyContent: 'center',
-                alignItems: 'center'
+                justifyContent: 'center', alignItems: 'center'
               }}>
                 <Text style={{ fontSize: 20, opacity: 0.3 }}>+</Text>
               </View>
@@ -137,7 +143,7 @@ export default function DashboardScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       
-      {/* HEADER: Uses theme colors for strong contrast */}
+      {/* HEADER */}
       <Appbar.Header elevated style={{ backgroundColor: theme.colors.surface }}>
         <Appbar.Content 
           title="My Kitchen" 
@@ -145,6 +151,20 @@ export default function DashboardScreen() {
         />
         <Appbar.Action icon="cart-outline" onPress={() => router.push('/shop')} iconColor={theme.colors.onSurfaceVariant} />
         <Appbar.Action icon="calendar-outline" onPress={() => router.push('/(tabs)/planner')} iconColor={theme.colors.onSurfaceVariant} />
+        
+        {/* --- LOGOUT BUTTON OR SPINNER --- */}
+        {loggingOut ? (
+            <View style={{ width: 48, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator size="small" color={theme.colors.error} />
+            </View>
+        ) : (
+            <Appbar.Action 
+                icon="logout" 
+                onPress={handleLogout} 
+                iconColor={theme.colors.error} 
+            />
+        )}
+        
       </Appbar.Header>
 
       <ScrollView 
@@ -153,10 +173,8 @@ export default function DashboardScreen() {
       >
         {/* TODAY SECTION */}
         <Text style={[styles.sectionHeader, { color: theme.colors.onSurfaceVariant }]}>TODAY</Text>
-        
         <Card mode="elevated" style={{ backgroundColor: theme.colors.surface, marginBottom: 20 }}>
           <Card.Content style={{ padding: 0 }}> 
-             {/* Padding 0 allows the List.Item ripple to touch edges */}
             <MealRow label="Breakfast" dish={globalPlans.today?.breakfast} />
             <Divider />
             <MealRow label="Lunch" dish={globalPlans.today?.lunch} />
@@ -167,7 +185,6 @@ export default function DashboardScreen() {
 
         {/* TOMORROW SECTION */}
         <Text style={[styles.sectionHeader, { color: theme.colors.onSurfaceVariant }]}>TOMORROW</Text>
-        
         <Card mode="elevated" style={{ backgroundColor: theme.colors.surface }}>
           <Card.Content style={{ padding: 0 }}>
             <MealRow label="Breakfast" dish={globalPlans.tomorrow?.breakfast} />
