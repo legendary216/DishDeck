@@ -4,7 +4,7 @@ import { Text, Searchbar, FAB, List, Divider, useTheme } from 'react-native-pape
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
+import PickDish from '../pick-dish';
 export default function LibraryScreen() {
   const theme = useTheme(); // <--- Hook into your Theme Engine
   
@@ -102,6 +102,10 @@ export default function LibraryScreen() {
           elevation={0} // Flat modern look
         />
       </View>
+
+     {!searchQuery && (
+          <PickDish />
+      )}
 
       <FlatList
         data={filteredDishes}
