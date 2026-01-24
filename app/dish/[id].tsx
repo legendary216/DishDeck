@@ -41,32 +41,50 @@ export default function DishDetailScreen() {
     }
   };
 
-  // --- AI GENERATION LOGIC ---
+ // 1. Add this helper function inside your component
+  const formatGeminiText = (text: string) => {
+    return text
+      .replace(/\*\*/g, '')      // Remove bold markers (**)
+      .replace(/^#+\s/gm, '')    // Remove heading markers (#)
+      .replace(/^\*\s/gm, '• ')  // Replace list bullets (* ) with nice dots (• )
+      .trim();
+  };
+
   const generateAIContent = async () => {
     if (!name) {
-        Alert.alert("Missing Name", "Please enter a dish name first so AI knows what to cook!");
+        Alert.alert("Missing Name", "Please enter a dish name first!");
         return;
     }
 
     setIsGenerating(true);
     try {
+      // We explicitly ask Gemini for a clean format to make parsing easier
       const prompt = `List ingredients and steps for "${name}". 
-      Format: INGREDIENTS: (list) RECIPE: (short steps). No intro.`;
+      Format: 
+      INGREDIENTS:
+      (list with bullets)
+      RECIPE:
+      (numbered steps)
+      No intro text.`;
 
       const result = await geminiModel.generateContent(prompt);
       const text = result.response.text();
 
+      // Split the text manually
       const parts = text.split("RECIPE:");
-      const ingredientsPart = parts[0].replace("INGREDIENTS:", "").trim();
-      const recipePart = parts[1] ? parts[1].trim() : "";
+      
+      let ingredientsRaw = parts[0].replace("INGREDIENTS:", "");
+      let recipeRaw = parts[1] ? parts[1] : "";
 
-      setIngredients(ingredientsPart);
-      setRecipe(recipePart);
+      // Clean the text using our helper function
+      setIngredients(formatGeminiText(ingredientsRaw));
+      setRecipe(formatGeminiText(recipeRaw));
+
       Alert.alert("Magic Complete", "Ingredients and Recipe have been generated!");
       
     } catch (error) {
       console.error(error);
-      Alert.alert("AI Error", "Could not generate content. Check your API key or connection.");
+      Alert.alert("AI Error", "Could not generate content.");
     } finally {
       setIsGenerating(false);
     }

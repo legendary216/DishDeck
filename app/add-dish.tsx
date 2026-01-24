@@ -24,28 +24,45 @@ export default function AddDishScreen() {
 
   // --- LOGIC ---
   
-  // 1. AI Generation
+  // ... inside AddDishScreen component ...
+
+  // 1. Helper to clean up Markdown (*, **)
+  const formatGeminiText = (text: string) => {
+    return text
+      .replace(/\*\*/g, '')      // Remove bold markers
+      .replace(/^#+\s/gm, '')    // Remove headings
+      .replace(/^\*\s/gm, '• ')  // Replace list bullets with dots
+      .trim();
+  };
+
+  // 2. The AI Generation Function
   const generateAIContent = async () => {
     if (!name.trim()) {
-      Alert.alert("Error", "Please enter a dish name first.");
+      Alert.alert("Missing Name", "Please enter a dish name first (e.g., 'Pasta Carbonara')");
       return;
     }
 
     setIsGenerating(true);
     try {
-      // NOTE: Make sure your gemini.ts is using 'gemini-1.5-flash' if 2.5 fails
-      const prompt = `List ingredients and steps for"${name}". 
-      Format: INGREDIENTS: (list) RECIPE: (short steps). No intro.`;
+      const prompt = `List ingredients and steps for "${name}". 
+      Format: 
+      INGREDIENTS:
+      (list with bullets)
+      RECIPE:
+      (numbered steps)
+      No intro text.`;
 
       const result = await geminiModel.generateContent(prompt);
       const text = result.response.text();
 
+      // Split and Clean
       const parts = text.split("RECIPE:");
-      const ingredientsPart = parts[0].replace("INGREDIENTS:", "").trim();
-      const recipePart = parts[1] ? parts[1].trim() : "";
+      const ingredientsRaw = parts[0].replace("INGREDIENTS:", "");
+      const recipeRaw = parts[1] ? parts[1] : "";
 
-      setIngredients(ingredientsPart);
-      setRecipe(recipePart);
+      setIngredients(formatGeminiText(ingredientsRaw));
+      setRecipe(formatGeminiText(recipeRaw));
+
     } catch (error) {
       console.error(error);
       Alert.alert("AI Error", "Could not generate content.");
@@ -265,10 +282,16 @@ export default function AddDishScreen() {
               onChangeText={setIngredients}
               mode="outlined"
               multiline
-              numberOfLines={3}
+             // numberOfLines={3}
               activeOutlineColor={theme.colors.primary}
               outlineColor={theme.colors.outline}
-              style={[styles.input, { backgroundColor: theme.colors.surface, marginBottom: 8 }]}
+              style={[styles.input, {
+                 backgroundColor: theme.colors.surface,
+                  marginBottom: 8,
+                  minHeight: 80,
+                maxHeight: 200,
+                textAlignVertical: 'top'
+                }]}
             />
           )}
         </View>
@@ -287,10 +310,10 @@ export default function AddDishScreen() {
               onChangeText={setRecipe}
               mode="outlined"
               multiline
-              numberOfLines={4}
+             // numberOfLines={4}
               activeOutlineColor={theme.colors.primary}
               outlineColor={theme.colors.outline}
-              style={[styles.input, { backgroundColor: theme.colors.surface, marginBottom: 8 }]}
+              style={[styles.input, { backgroundColor: theme.colors.surface, marginBottom: 8,maxHeight: 300 ,minHeight: 80,textAlignVertical: 'top'}]}
             />
           )}
         </View>

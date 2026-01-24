@@ -216,7 +216,7 @@ export default function PlanScreen() {
                     {dish.name}
                 </Text>
                 <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
-                    Hold to move
+                    Hold to swap
                 </Text>
               </View>
               <IconButton 
