@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Image, TouchableOpacity, RefreshControl } from 'react-native';
-import { TextInput, Button, Text, Chip, HelperText } from 'react-native-paper';
+import { TextInput, Button, Text, Chip, useTheme, ActivityIndicator, IconButton } from 'react-native-paper';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '../utils/supabase';
 import { router } from 'expo-router';
-import { geminiModel } from '../utils/gemini'; // Adjust the path if your folders are different
-import { ActivityIndicator } from 'react-native-paper';
+import { geminiModel } from '../utils/gemini'; 
+
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
 
 export default function AddDishScreen() {
+  const theme = useTheme(); 
+  
   // STATE
   const [name, setName] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
@@ -20,38 +22,38 @@ export default function AddDishScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
 
+  // --- LOGIC ---
 
+  // 1. AI Generation (Unchanged)
   const generateAIContent = async () => {
-  if (!name.trim()) {
-    Alert.alert("Error", "Please enter a dish name first.");
-    return;
-  }
+    if (!name.trim()) {
+      Alert.alert("Error", "Please enter a dish name first.");
+      return;
+    }
 
-  setIsGenerating(true);
-  try {
-    const prompt = `List ingredients and steps for"${name}". 
-    Format: INGREDIENTS: (list) RECIPE: (short steps). No intro.`;
+    setIsGenerating(true);
+    try {
+      const prompt = `List ingredients and steps for"${name}". 
+      Format: INGREDIENTS: (list) RECIPE: (short steps). No intro. 
+      important point : if it is not a edible item, say item is not edible or display funny message`;
 
-    const result = await geminiModel.generateContent(prompt);
-    const text = result.response.text();
+      const result = await geminiModel.generateContent(prompt);
+      const text = result.response.text();
 
-    // Split the text to fill both boxes
-    const parts = text.split("RECIPE:");
-    const ingredientsPart = parts[0].replace("INGREDIENTS:", "").trim();
-    const recipePart = parts[1] ? parts[1].trim() : "";
+      const parts = text.split("RECIPE:");
+      const ingredientsPart = parts[0].replace("INGREDIENTS:", "").trim();
+      const recipePart = parts[1] ? parts[1].trim() : "";
 
-    setIngredients(ingredientsPart);
-    setRecipe(recipePart);
+      setIngredients(ingredientsPart);
+      setRecipe(recipePart);
+    } catch (error) {
+      console.error(error);
+      Alert.alert("AI Error", "Could not generate content.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
-  } catch (error) {
-    console.error(error);
-    Alert.alert("AI Error", "Could not generate content. Check your API key or connection.");
-  } finally {
-    setIsGenerating(false);
-  }
-};
-
-  // REFRESH HANDLER (Pull to clear form)
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
     setName('');
@@ -63,10 +65,45 @@ export default function AddDishScreen() {
     setTimeout(() => setRefreshing(false), 1000);
   }, []);
 
-  // IMAGE PICKER
-  const pickImage = async () => {
+  // 2. NEW: Camera + Gallery Logic
+  const handleImagePick = async () => {
+    Alert.alert(
+      "Upload Photo",
+      "Choose a method",
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Take Photo", 
+          onPress: () => openCamera() 
+        },
+        { 
+          text: "Choose from Gallery", 
+          onPress: () => openGallery() 
+        },
+      ]
+    );
+  };
+
+  const openCamera = async () => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (permissionResult.granted === false) {
+      Alert.alert("Permission to access camera is required!");
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.5,
+    });
+
+    if (!result.canceled) {
+      setImageUri(result.assets[0].uri);
+    }
+  };
+
+  const openGallery = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      // FIX: Use simple string array instead of deprecated Enum
       mediaTypes: ['images'], 
       allowsEditing: true,
       aspect: [4, 3],
@@ -78,10 +115,8 @@ export default function AddDishScreen() {
     }
   };
 
-  // SAVE HANDLER
+  // 3. Save Logic (Unchanged)
   const handleSave = async () => {
-    console.log("--- START SAVING ---"); 
-    
     if (!name.trim()) {
       Alert.alert("Missing Info", "Please enter a dish name.");
       return;
@@ -92,18 +127,13 @@ export default function AddDishScreen() {
     }
     
     setLoading(true);
-    console.log("--- enetring try catch ---"); 
-    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("User not found");
       
-      console.log("--- entered ---"); 
         let image_path = null;
 
-        // 1. UPLOAD IMAGE (If exists)
         if (imageUri) {
-            console.log("Uploading Image...");
             const ext = imageUri.split('.').pop();
             const fileName = `${user.id}/${Date.now()}.${ext}`;
             const formData = new FormData();
@@ -119,7 +149,7 @@ export default function AddDishScreen() {
                 .from('dish-images')
                 .upload(fileName, formData);
 
-            if (uploadError) throw new Error("Image upload failed: " + uploadError.message);
+            if (uploadError) throw new Error("Image upload failed");
 
             const { data: publicUrlData } = supabase.storage
                 .from('dish-images')
@@ -128,8 +158,6 @@ export default function AddDishScreen() {
             image_path = publicUrlData.publicUrl;
         }
 
-        // 2. PREPARE DATA
-        // We use || null to ensure empty strings don't crash the DB
         const insertData = {
             user_id: user.id,
             name: name.trim(),
@@ -140,61 +168,74 @@ export default function AddDishScreen() {
             image_path: image_path || null,
         };
         
-        console.log("Inserting Data:", insertData);
-
-        // 3. INSERT TO DB
         const { error: dbError } = await supabase.from('dishes').insert(insertData);
+        if (dbError) throw new Error(dbError.message);
 
-        if (dbError) {
-            console.error("DB INSERT ERROR:", dbError);
-            throw new Error(dbError.message);
-        }
-
-        console.log("Success!");
         router.replace('/(tabs)');
 
     } catch (error: any) {
-        console.error("CATCH ERROR:", error);
         Alert.alert("Error Saving", error.message || "Something went wrong.");
     } finally {
         setLoading(false); 
     }
   };
 
+  // --- RENDER ---
   return (
     <ScrollView 
-      style={styles.container} 
+      style={[styles.container, { backgroundColor: theme.colors.background }]} 
       contentContainerStyle={{ paddingBottom: 50 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[theme.colors.primary]} />}
     >
-      <Text variant="headlineMedium" style={styles.header}>Add New Dish</Text>
+      
+      {/* Header */}
+      <Text variant="headlineMedium" style={[styles.header, { color: theme.colors.onSurface }]}>
+        Add New Dish
+      </Text>
 
-      <TouchableOpacity onPress={pickImage} style={styles.imagePicker}>
+      {/* Image Picker */}
+      <TouchableOpacity onPress={handleImagePick} style={styles.imagePicker}>
         {imageUri ? (
           <Image source={{ uri: imageUri }} style={styles.image} />
         ) : (
-          <View style={styles.placeholder}>
-            <Text style={{color: '#aaa'}}>+ Add Photo</Text>
+          <View style={[
+              styles.placeholder, 
+              { 
+                  borderColor: theme.colors.outline, 
+                  backgroundColor: theme.colors.surfaceVariant 
+              }
+            ]}>
+            <IconButton icon="camera-plus" size={30} iconColor={theme.colors.onSurfaceVariant} />
+            <Text style={{ color: theme.colors.onSurfaceVariant, fontWeight: '600' }}>Add Dish Photo</Text>
           </View>
         )}
       </TouchableOpacity>
 
+      {/* Dish Name */}
       <TextInput
         label="Dish Name *"
         value={name}
         onChangeText={setName}
         mode="outlined"
-        style={styles.input}
+        activeOutlineColor={theme.colors.primary}
+        outlineColor={theme.colors.outline}
+        style={[styles.input, { backgroundColor: theme.colors.surface }]}
+        textColor={theme.colors.onSurface}
         right={
-    <TextInput.Icon 
-      icon={isGenerating ? "loading" : "auto-fix"} 
-      onPress={generateAIContent}
-      disabled={isGenerating}
-    />
-  }
+            <TextInput.Icon 
+                icon={isGenerating ? "loading" : "auto-fix"} 
+                color={theme.colors.primary}
+                onPress={generateAIContent}
+                disabled={isGenerating}
+                forceTextInputFocus={false}
+            />
+        }
       />
 
-      <Text variant="titleMedium" style={styles.label}>Meal Type *</Text>
+      {/* Meal Type */}
+      <Text variant="titleMedium" style={[styles.label, { color: theme.colors.onSurface }]}>
+        Meal Type *
+      </Text>
       <View style={styles.chipRow}>
         {MEAL_TYPES.map((t) => {
           const isSelected = selectedTypes.includes(t);
@@ -203,7 +244,16 @@ export default function AddDishScreen() {
               key={t}
               selected={isSelected}
               showSelectedOverlay
-              style={[styles.chip, isSelected && { backgroundColor: '#eaddff' }]}
+              style={[
+                  styles.chip, 
+                  { 
+                      backgroundColor: isSelected ? theme.colors.secondaryContainer : theme.colors.surfaceVariant,
+                      borderColor: theme.colors.outline 
+                  }
+              ]}
+              textStyle={{ 
+                  color: isSelected ? theme.colors.onSecondaryContainer : theme.colors.onSurfaceVariant 
+              }}
               onPress={() => {
                 if (isSelected) setSelectedTypes(prev => prev.filter(item => item !== t));
                 else setSelectedTypes(prev => [...prev, t]);
@@ -215,46 +265,54 @@ export default function AddDishScreen() {
         })}
       </View>
 
-      {/* INGREDIENTS SECTION */}
-<View style={{ minHeight: 100, justifyContent: 'center' }}>
-  {isGenerating ? (
-    <View style={styles.aiLoadingContainer}>
-      <ActivityIndicator animating={true} color="#6200ee" />
-      <Text style={styles.aiLoadingText}>Gemini is cooking up ingredients...</Text>
-    </View>
-  ) : (
-    <TextInput
-      label="Ingredients (Optional)"
-      value={ingredients}
-      onChangeText={setIngredients}
-      mode="outlined"
-      multiline
-      numberOfLines={3}
-      style={styles.input}
-    />
-  )}
-</View>
+      {/* INGREDIENTS */}
+      {/* Reduced minHeight to reduce spacing */}
+      <View style={{ justifyContent: 'center' }}>
+        {isGenerating ? (
+          <View style={[styles.aiLoadingContainer, { borderColor: theme.colors.outline, backgroundColor: theme.colors.surfaceVariant }]}>
+            <ActivityIndicator animating={true} color={theme.colors.primary} />
+            <Text style={[styles.aiLoadingText, { color: theme.colors.primary }]}>Gemini is cooking up ingredients...</Text>
+          </View>
+        ) : (
+          <TextInput
+            label="Ingredients (Optional)"
+            value={ingredients}
+            onChangeText={setIngredients}
+            mode="outlined"
+            multiline
+            numberOfLines={3}
+            activeOutlineColor={theme.colors.primary}
+            outlineColor={theme.colors.outline}
+            // Reduced Margin Bottom
+            style={[styles.input, { backgroundColor: theme.colors.surface, marginBottom: 8 }]}
+          />
+        )}
+      </View>
 
-{/* RECIPE SECTION */}
-<View style={{ minHeight: 120, justifyContent: 'center' }}>
-  {isGenerating ? (
-    <View style={styles.aiLoadingContainer}>
-      <ActivityIndicator animating={true} color="#6200ee" />
-      <Text style={styles.aiLoadingText}>Writing the instructions...</Text>
-    </View>
-  ) : (
-    <TextInput
-      label="Recipe / Notes (Optional)"
-      value={recipe}
-      onChangeText={setRecipe}
-      mode="outlined"
-      multiline
-      numberOfLines={4}
-      style={styles.input}
-    />
-  )}
-</View>
+      {/* RECIPE */}
+      <View style={{ justifyContent: 'center' }}>
+        {isGenerating ? (
+          <View style={[styles.aiLoadingContainer, { borderColor: theme.colors.outline, backgroundColor: theme.colors.surfaceVariant }]}>
+            <ActivityIndicator animating={true} color={theme.colors.primary} />
+            <Text style={[styles.aiLoadingText, { color: theme.colors.primary }]}>Writing the instructions...</Text>
+          </View>
+        ) : (
+          <TextInput
+            label="Recipe / Notes (Optional)"
+            value={recipe}
+            onChangeText={setRecipe}
+            mode="outlined"
+            multiline
+            numberOfLines={4}
+            activeOutlineColor={theme.colors.primary}
+            outlineColor={theme.colors.outline}
+            // Reduced Margin Bottom
+            style={[styles.input, { backgroundColor: theme.colors.surface, marginBottom: 8 }]}
+          />
+        )}
+      </View>
 
+      {/* YOUTUBE LINK */}
       <TextInput
         label="YouTube Link (Optional)"
         value={youtubeLink}
@@ -263,15 +321,21 @@ export default function AddDishScreen() {
         placeholder="https://youtube.com/..."
         keyboardType="url"
         autoCapitalize="none"
-        style={styles.input}
-        right={<TextInput.Icon icon="youtube" color="red" />}
+        activeOutlineColor={theme.colors.primary}
+        outlineColor={theme.colors.outline}
+        // Reduced Margin Bottom
+        style={[styles.input, { backgroundColor: theme.colors.surface, marginBottom: 8 }]}
+        right={<TextInput.Icon icon="youtube" color={theme.colors.error} />}
       />
 
+      {/* Buttons */}
       <Button 
         mode="contained" 
         onPress={handleSave} 
         loading={loading} 
         disabled={loading}
+        buttonColor={theme.colors.primary}
+        textColor={theme.colors.onPrimary}
         style={styles.saveBtn}
         contentStyle={{ height: 50 }}
       >
@@ -282,44 +346,51 @@ export default function AddDishScreen() {
         mode="text" 
         onPress={() => router.back()} 
         disabled={loading}
-        style={{marginTop: 10}}
+        textColor={theme.colors.error}
+        style={{ marginTop: 5 }}
       >
         Cancel
       </Button>
+
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff', padding: 20 },
-  header: { fontWeight: 'bold', marginBottom: 20, marginTop: 40, textAlign: 'center' },
-  input: { marginBottom: 15, backgroundColor: 'white' },
-  label: { marginBottom: 10, marginTop: 5, fontWeight: 'bold' },
+  container: { flex: 1, padding: 20 },
+  header: { fontWeight: '800', marginBottom: 20, marginTop: 40, textAlign: 'center' },
+  
+  // CHANGED: Reduced marginBottom from 15 to 10 for tighter spacing
+  input: { marginBottom: 10 },
+  
+  label: { marginBottom: 10, marginTop: 5, fontWeight: '700' },
   chipRow: { flexDirection: 'row', gap: 10, marginBottom: 20, flexWrap: 'wrap' },
-  chip: { backgroundColor: '#f0f0f0' },
-  saveBtn: { marginTop: 20, borderRadius: 8 },
+  chip: { borderWidth: 1 }, 
+  saveBtn: { marginTop: 15, borderRadius: 8 }, // Slightly reduced top margin
   imagePicker: { alignItems: 'center', marginBottom: 20 },
-  image: { width: '100%', height: 200, borderRadius: 10 },
+  image: { width: '100%', height: 200, borderRadius: 12, borderWidth: 1, borderColor: '#eee' },
   placeholder: { 
-    width: '100%', height: 150, borderRadius: 10, backgroundColor: '#f0f0f0', 
-    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#ddd', borderStyle: 'dashed'
+    width: '100%', 
+    height: 150, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    borderWidth: 1.5, 
+    borderStyle: 'dashed'
   },
   aiLoadingContainer: {
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 20,
-  backgroundColor: '#f5f5f5',
-  borderRadius: 8,
-  borderWidth: 1,
-  borderColor: '#e0e0e0',
-  borderStyle: 'dashed',
-  marginBottom: 15
-},
-aiLoadingText: {
-  marginTop: 10,
-  color: '#6200ee',
-  fontSize: 12,
-  fontWeight: 'bold',
-  fontStyle: 'italic'
-},
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    marginBottom: 10 // Reduced from 15
+  },
+  aiLoadingText: {
+    marginTop: 10,
+    fontSize: 12,
+    fontWeight: 'bold',
+    fontStyle: 'italic'
+  },
 });
