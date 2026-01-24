@@ -15,31 +15,56 @@ export default function DashboardScreen() {
   const tomorrowName = days[todayIdx + 1];
   const { globalPlans, setGlobalPlans } = usePlan();
 
- const fetchPlans = async () => {
-  // If we already have data in globalPlans, do NOT show the spinner.
-  // This allows for a "silent refresh" in the background.
+const fetchPlans = async () => {
+  // 1. Context Check (The Guard Clause)
+  // If we already have data in memory, stop loading immediately and exit.
   if (globalPlans.today) {
-    setLoading(false);
-  } else {
-    setLoading(true);
+    setLoading(false); 
+    return;
   }
+
+  // 2. If Context is empty (like on reload), show spinner and fetch from DB
+  setLoading(true);
 
   try {
-    // ... rest of your supabase code ...
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // Fetch Today and Tomorrow's meals
+    const { data, error } = await supabase
+      .from('weekly_plan')
+      .select(`day, meal_type, dish:dishes(id, name, image_path)`)
+      .eq('user_id', user.id)
+      .in('day', [todayName, tomorrowName]);
+
+    if (error) throw error;
+
+    if (data) {
+      // Helper to find the specific meal in the array
+      const mapDay = (dayName: string) => ({
+        breakfast: data.find(m => m.day === dayName && m.meal_type === 'Breakfast')?.dish,
+        lunch: data.find(m => m.day === dayName && m.meal_type === 'Lunch')?.dish,
+        dinner: data.find(m => m.day === dayName && m.meal_type === 'Dinner')?.dish,
+      });
+
+      // 3. Update the Global Context
+      // This populates your screen AND saves it for tab switching
+      setGlobalPlans({ 
+        today: mapDay(todayName), 
+        tomorrow: mapDay(tomorrowName) 
+      });
+    }
+  } catch (err) {
+    console.error("Error fetching plans:", err);
   } finally {
-    setLoading(false); // Ensure it always turns off at the end
+    setLoading(false);
   }
 };
-
-  useFocusEffect(
+useFocusEffect(
   useCallback(() => {
-    // Only fetch if we DON'T have data yet, OR 
-    // run it silently if we do.
-    fetchPlans(); 
-  }, [globalPlans]) // Adding globalPlans here can sometimes cause a loop, 
-                   // try an empty dependency array [] first to test.
+    fetchPlans();
+  }, []) // <--- KEEP THIS EMPTY to prevent infinite loops
 );
-
   // --- MINIMALIST MEAL ROW ---
   const MealRow = ({ label, dish }: { label: string; dish: any }) => (
     <TouchableOpacity 
