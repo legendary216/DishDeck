@@ -1,55 +1,36 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { View, StyleSheet, FlatList, Dimensions, Alert, NativeSyntheticEvent, NativeScrollEvent, ScrollView } from 'react-native';
-import { Text, Card, FAB, Chip, ActivityIndicator, IconButton, Portal, Modal, TouchableRipple, Button } from 'react-native-paper';
+import { Text, Card, FAB, ActivityIndicator, IconButton, Portal, Modal, TouchableRipple, Button, SegmentedButtons, useTheme, Avatar } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
-import { useFocusEffect, router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { usePlan } from '../../context/PlanContext';
 
 const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_TYPES = ['Breakfast', 'Lunch', 'Dinner'];
 const SCREEN_WIDTH = Dimensions.get('window').width;
-
 const CACHE_KEY = 'WEEKLY_PLAN_CACHE';
 
 export default function PlanScreen() {
+  const theme = useTheme();
+  const flatListRef = useRef<FlatList>(null);
+  
+  // State
   const [activeIndex, setActiveIndex] = useState(0);
   const [plans, setPlans] = useState<any>({ Breakfast: {}, Lunch: {}, Dinner: {} });
-  
-  const [loading, setLoading] = useState(true); 
+  const [loading, setLoading] = useState(true);
   const [isShuffling, setIsShuffling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
 
   // Move/Swap State
   const [moveModalVisible, setMoveModalVisible] = useState(false);
   const [sourceDay, setSourceDay] = useState<string | null>(null);
   const [isMoving, setIsMoving] = useState(false);
-  
+
   const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-  const flatListRef = useRef<FlatList>(null);
- const { globalPlans, setGlobalPlans } = usePlan();
+  const { setGlobalPlans } = usePlan();
 
-  const updateGlobalState = (allPlans: any) => {
-    const today = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-    const tomorrowDate = new Date();
-    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-    const tomorrow = tomorrowDate.toLocaleDateString('en-US', { weekday: 'long' });
-
-    setGlobalPlans({
-        today: {
-            breakfast: allPlans['Breakfast']?.[today],
-            lunch: allPlans['Lunch']?.[today],
-            dinner: allPlans['Dinner']?.[today],
-        },
-        tomorrow: {
-            breakfast: allPlans['Breakfast']?.[tomorrow],
-            lunch: allPlans['Lunch']?.[tomorrow],
-            dinner: allPlans['Dinner']?.[tomorrow],
-        }
-    });
-};
-
+  // --- DATA FETCHING ---
   useFocusEffect(
     useCallback(() => {
       loadCacheAndFetch();
@@ -61,10 +42,9 @@ export default function PlanScreen() {
       const cachedData = await AsyncStorage.getItem(CACHE_KEY);
       if (cachedData) {
         setPlans(JSON.parse(cachedData));
-        setLoading(false); 
+        setLoading(false);
       }
     } catch (e) { console.log(e); }
-
     await fetchFromSupabase();
   };
 
@@ -72,9 +52,9 @@ export default function PlanScreen() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from('weekly_plan')
-      .select('day, meal_type, dishes(*)') 
+      .select('day, meal_type, dishes(*)')
       .eq('user_id', user.id);
 
     if (data) {
@@ -86,145 +66,95 @@ export default function PlanScreen() {
       });
       setPlans(newPlans);
       AsyncStorage.setItem(CACHE_KEY, JSON.stringify(newPlans));
+      updateGlobalContext(newPlans);
     }
     setLoading(false);
   };
 
-  const handleShuffle = async () => {
-  const currentType = MEAL_TYPES[activeIndex];
-  setIsShuffling(true); 
+  const updateGlobalContext = (currentPlans: any) => {
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const todayIdx = new Date().getDay();
+    const tName = days[todayIdx];
+    const tomName = days[(todayIdx + 1) % 7];
 
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return;
-
-  // 1. Get the candidates (the "deck")
-  const { data: candidates } = await supabase
-    .from('dishes')
-    .select('id, name, image_path') // Get name/image too so we can update Global State
-    .eq('user_id', user.id)
-    .ilike('type', `%${currentType}%`);
-
-  if (!candidates || candidates.length === 0) {
-    Alert.alert("Empty Deck", `No dishes found for ${currentType}!`);
-    setIsShuffling(false);
-    return;
-  }
-
-  // 2. Generate the new selection
-  const newRows = DAYS.map(day => ({
-    user_id: user.id,
-    day: day,
-    meal_type: currentType,
-    dish_id: candidates[Math.floor(Math.random() * candidates.length)].id
-  }));
-
-  // 3. OPTIMISTIC UPDATE: Update Global State immediately
-  // We find the today/tomorrow items from our new selection to update the Dashboard
-  const todayName = new Date().toLocaleDateString('en-US', { weekday: 'long' });
-  const tomorrowDate = new Date();
-  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
-  const tomorrowName = tomorrowDate.toLocaleDateString('en-US', { weekday: 'long' });
-
-  const todaySelection = candidates.find(c => c.id === newRows.find(r => r.day === todayName)?.dish_id);
-  const tomorrowSelection = candidates.find(c => c.id === newRows.find(r => r.day === tomorrowName)?.dish_id);
-
-  // We merge the new shuffled meal with the existing global state
-  setGlobalPlans({
-    today: {
-      ...globalPlans.today,
-      [currentType.toLowerCase()]: todaySelection
-    },
-    tomorrow: {
-      ...globalPlans.tomorrow,
-      [currentType.toLowerCase()]: tomorrowSelection
-    }
-  });
-
-  // 4. DATABASE UPDATE (Background)
-  // We don't 'await' the fetchFromSupabase anymore for the UI to feel fast
-  try {
-    await supabase.from('weekly_plan').upsert(newRows, { onConflict: 'user_id, day, meal_type' });
-    await fetchFromSupabase(); // Keeps the Planner tab synced
-  } catch (error) {
-    console.error("Background sync failed:", error);
-    // Optional: Alert user if the save failed
-  }
-
-  setIsShuffling(false);
-};
-  const onRefresh = async () => {
-    setRefreshing(true);
-    await fetchFromSupabase();
-    setRefreshing(false);
+    setGlobalPlans({
+        today: {
+            breakfast: currentPlans['Breakfast']?.[tName],
+            lunch: currentPlans['Lunch']?.[tName],
+            dinner: currentPlans['Dinner']?.[tName],
+        },
+        tomorrow: {
+            breakfast: currentPlans['Breakfast']?.[tomName],
+            lunch: currentPlans['Lunch']?.[tomName],
+            dinner: currentPlans['Dinner']?.[tomName],
+        }
+    });
   };
 
-  const openMoveModal = (day: string) => {
-    setSourceDay(day);
-    setMoveModalVisible(true);
+  // --- ACTIONS ---
+  const handleShuffle = async () => {
+    const currentType = MEAL_TYPES[activeIndex];
+    setIsShuffling(true);
+
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    // 1. Get Candidates
+    const { data: candidates } = await supabase
+      .from('dishes')
+      .select('id, name, image_path')
+      .eq('user_id', user.id)
+      .ilike('type', `%${currentType}%`);
+
+    if (!candidates || candidates.length === 0) {
+      Alert.alert("Empty Deck", `No dishes found for ${currentType}!`);
+      setIsShuffling(false);
+      return;
+    }
+
+    // 2. Generate New Rows
+    const newRows = DAYS.map(day => ({
+      user_id: user.id,
+      day: day,
+      meal_type: currentType,
+      dish_id: candidates[Math.floor(Math.random() * candidates.length)].id
+    }));
+
+    // 3. Update DB & UI
+    await supabase.from('weekly_plan').upsert(newRows, { onConflict: 'user_id, day, meal_type' });
+    await fetchFromSupabase();
+    setIsShuffling(false);
   };
 
   const executeMove = async (targetDay: string) => {
     if (!sourceDay) return;
-    if (sourceDay === targetDay) {
-        setMoveModalVisible(false);
-        return;
-    }
-
-    setIsMoving(true); 
+    setIsMoving(true);
     const currentType = MEAL_TYPES[activeIndex];
     const { data: { user } } = await supabase.auth.getUser();
-    
+
     if (user) {
         const sourceDish = plans[currentType]?.[sourceDay];
         const targetDish = plans[currentType]?.[targetDay];
-
+        
         const updates = [];
-
-        if (sourceDish) {
-            updates.push({
-                user_id: user.id,
-                day: targetDay,
-                meal_type: currentType,
-                dish_id: sourceDish.id
-            });
+        if (sourceDish) updates.push({ user_id: user.id, day: targetDay, meal_type: currentType, dish_id: sourceDish.id });
+        if (targetDish) updates.push({ user_id: user.id, day: sourceDay, meal_type: currentType, dish_id: targetDish.id });
+        else {
+             await supabase.from('weekly_plan').delete().match({ user_id: user.id, day: sourceDay, meal_type: currentType });
         }
-
-        if (targetDish) {
-            updates.push({
-                user_id: user.id,
-                day: sourceDay,
-                meal_type: currentType,
-                dish_id: targetDish.id
-            });
-        } else {
-            // Explicit delete if target was empty
-            await supabase.from('weekly_plan').delete().match({
-                user_id: user.id,
-                day: sourceDay,
-                meal_type: currentType
-            });
-        }
-
+        
         if (updates.length > 0) {
             await supabase.from('weekly_plan').upsert(updates, { onConflict: 'user_id, day, meal_type' });
         }
-
         await fetchFromSupabase();
-        
-        const msg = targetDish 
-            ? `Swapped ${sourceDay} and ${targetDay}!` 
-            : `Moved to ${targetDay}!`;
-        Alert.alert("Success", msg);
     }
-
-    setIsMoving(false); 
+    setIsMoving(false);
     setMoveModalVisible(false);
     setSourceDay(null);
   };
 
-  const scrollToIndex = (index: number) => {
-    setActiveIndex(index);
-    flatListRef.current?.scrollToIndex({ index, animated: true });
+  const openPicker = (day: string, type: string) => {
+    router.push({ pathname: '/pick-dish', params: { day, mealType: type } });
   };
 
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -235,162 +165,196 @@ export default function PlanScreen() {
     }
   };
 
-  const openPicker = (day: string, type: string) => {
-    router.push({ pathname: '/pick-dish', params: { day, mealType: type } });
+  const handleSegmentChange = (value: string) => {
+    const index = MEAL_TYPES.indexOf(value);
+    setActiveIndex(index);
+    flatListRef.current?.scrollToIndex({ index, animated: true });
   };
 
-  const renderDayRow = (day: string, currentType: string) => {
+  // --- RENDER ROW ---
+ const renderDayRow = (day: string, currentType: string) => {
     const dish = plans[currentType]?.[day];
     const isToday = day === todayName;
 
     return (
-      <View style={[styles.dayRow, isToday && styles.todayRow]} key={day}>
-        <Text style={[styles.dayLabel, isToday && {color: '#6200ee'}]}>
+      <View style={styles.dayRow} key={day}>
+        <Text style={[
+            styles.dayLabel, 
+            { color: isToday ? theme.colors.primary : theme.colors.onSurfaceVariant }
+        ]}>
           {day.substring(0, 3)}
         </Text>
         
         {dish ? (
+          // --- FILLED CARD ---
           <Card 
-            style={[styles.card, isToday && {borderColor: '#6200ee', borderWidth: 1}]} 
-            // LONG PRESS RESTORED
-            onLongPress={() => openMoveModal(day)}
+            mode="contained"
+            style={[
+                styles.card, 
+                { 
+                    backgroundColor: isToday ? theme.colors.secondaryContainer : theme.colors.surface,
+                    borderRadius: 24,
+                    // Solid border for inactive days, No border for active day
+                    borderWidth: isToday ? 0 : 1,
+                    borderColor: isToday ? 'transparent' : 'rgba(0,0,0,0.1)', 
+                }
+            ]}
+            onLongPress={() => { setSourceDay(day); setMoveModalVisible(true); }}
             delayLongPress={200}
             onPress={() => router.push({ pathname: '/dish/[id]', params: { id: dish.id } })}
           >
-            <View style={styles.cardContent}>
-              <Card.Cover source={{ uri: dish.image_path || 'https://via.placeholder.com/100' }} style={styles.miniImage} />
+            <Card.Content style={styles.cardContent}>
+              <Avatar.Image size={40} source={{ uri: dish.image_path }} />
               <View style={styles.textContainer}>
-                <Text variant="bodyLarge" style={{fontWeight:'bold'}}>{dish.name}</Text>
-                {/* Visual Hint */}
-                <Text style={{fontSize: 10, color: '#aaa'}}>Hold to move</Text>
+                <Text 
+                    variant="bodyMedium" 
+                    style={{ 
+                        fontWeight: '700', 
+                        color: isToday ? theme.colors.onSecondaryContainer : theme.colors.onSurface 
+                    }}
+                >
+                    {dish.name}
+                </Text>
+                <Text variant="labelSmall" style={{ color: theme.colors.outline }}>
+                    Hold to move
+                </Text>
               </View>
-              
-              {/* Only Edit Icon (No Move Icon) */}
               <IconButton 
                 icon="pencil" 
                 size={20} 
-                iconColor="#6200ee"
+                iconColor={isToday ? theme.colors.primary : theme.colors.primary}
                 onPress={() => openPicker(day, currentType)} 
               />
-            </View>
+            </Card.Content>
           </Card>
         ) : (
-          <Card style={styles.emptyCard} onPress={() => openPicker(day, currentType)}>
+          // --- EMPTY CARD (Updated) ---
+          <Card 
+            mode="outlined" 
+            style={[
+                styles.emptyCard, 
+                { 
+                    // FIX: Match the styling of filled cards exactly
+                    borderColor: 'rgba(0,0,0,0.1)', 
+                    borderRadius: 24,
+                    borderStyle: 'solid', // CHANGED FROM 'dashed' TO 'solid'
+                    borderWidth: 1,
+                }
+            ]} 
+            onPress={() => openPicker(day, currentType)}
+          >
              <View style={styles.emptyContent}>
-                <Text style={{color: '#aaa', marginRight: 10}}>Add Dish</Text>
-                <IconButton icon="plus-circle-outline" size={20} iconColor="#aaa" />
+                <Text variant="bodySmall" style={{ color: theme.colors.outline }}>Add Dish</Text>
+                <IconButton icon="plus" size={18} iconColor={theme.colors.outline} />
              </View>
           </Card>
         )}
       </View>
     );
   };
-
-  const shouldShowSpinner = isShuffling || (loading && Object.keys(plans.Lunch).length === 0);
-
   return (
-    <View style={styles.container}>
-      <Text variant="headlineMedium" style={styles.header}>Weekly Plan</Text>
-
-      <View style={styles.chipsRow}>
-        {MEAL_TYPES.map((type, index) => (
-          <Chip
-            key={type}
-            selected={activeIndex === index}
-            onPress={() => scrollToIndex(index)}
-            showSelectedOverlay
-            style={styles.chip}
-          >
-            {type}
-          </Chip>
-        ))}
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      
+      {/* 1. Header */}
+      <View style={styles.headerContainer}>
+        <Text variant="headlineMedium" style={{ fontWeight: '800', color: theme.colors.onSurface }}>
+            Weekly Plan
+        </Text>
       </View>
 
+      {/* 2. Toggle */}
+      <View style={styles.segmentContainer}>
+        <SegmentedButtons
+          value={MEAL_TYPES[activeIndex]}
+          onValueChange={handleSegmentChange}
+          buttons={[
+            { value: 'Breakfast', label: 'Breakfast' },
+            { value: 'Lunch', label: 'Lunch' },
+            { value: 'Dinner', label: 'Dinner' },
+          ]}
+          density="medium"
+        />
+      </View>
+
+      {/* 3. Horizontal Pager */}
       <View style={{ flex: 1 }}>
-        <View style={{ flex: 1, opacity: shouldShowSpinner ? 0 : 1 }}>
-            <FlatList
-                ref={flatListRef}
-                data={MEAL_TYPES}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false} 
-                onScroll={handleScroll}
-                scrollEventThrottle={16}
-                keyExtractor={(item) => item}
-                getItemLayout={(data, index) => (
-                    {length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index}
-                )}
-                renderItem={({ item: type }) => (
-                    <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 15 }}>
-                        <FlatList 
-                            data={DAYS}
-                            keyExtractor={day => day}
-                            contentContainerStyle={{ paddingBottom: 100 }}
-                            showsVerticalScrollIndicator={false} 
-                            refreshing={refreshing}
-                            onRefresh={onRefresh}
-                            renderItem={({ item: day }) => renderDayRow(day, type)}
-                        />
-                    </View>
-                )}
-            />
-        </View>
-
-        {shouldShowSpinner && (
-            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center' }]}>
-                <ActivityIndicator animating={true} size="large" color="#6200ee" />
+          <FlatList
+            ref={flatListRef}
+            data={MEAL_TYPES}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={handleScroll}
+            scrollEventThrottle={16}
+            keyExtractor={(item) => item}
+            getItemLayout={(data, index) => (
+                {length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index}
+            )}
+            renderItem={({ item: type }) => (
+                <View style={{ width: SCREEN_WIDTH, paddingHorizontal: 16 }}>
+                    <FlatList 
+                        data={DAYS}
+                        keyExtractor={day => day}
+                        contentContainerStyle={{ paddingBottom: 100, paddingTop: 10 }}
+                        showsVerticalScrollIndicator={false}
+                        refreshing={refreshing}
+                        onRefresh={fetchFromSupabase}
+                        renderItem={({ item: day }) => renderDayRow(day, type)}
+                    />
+                </View>
+            )}
+          />
+          
+          {(isShuffling || loading) && (
+            <View style={[StyleSheet.absoluteFill, { justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.7)' }]}>
+                <ActivityIndicator animating={true} size="large" color={theme.colors.primary} />
             </View>
-        )}
+          )}
       </View>
 
+      {/* 4. FAB (Standard V5 usage) */}
       <FAB
-        icon="shuffle"
-        label="Shuffle"
-        style={styles.fab}
+        icon="shuffle-variant"
+        label="Shuffle Week"
         onPress={handleShuffle}
-        disabled={isShuffling} 
+        visible={!isShuffling}
+        style={[styles.fab, { backgroundColor: theme.colors.primaryContainer }]}
+        color={theme.colors.onPrimaryContainer}
+        mode="elevated"
       />
 
-      {/* --- MOVE MODAL WITH SPINNER --- */}
+      {/* 5. Move Modal */}
       <Portal>
-        <Modal visible={moveModalVisible} onDismiss={() => setMoveModalVisible(false)} contentContainerStyle={styles.modal}>
-          
+        <Modal visible={moveModalVisible} onDismiss={() => setMoveModalVisible(false)} contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}>
           {isMoving ? (
-            <View style={{padding: 20, alignItems: 'center'}}>
-                <ActivityIndicator animating={true} size="large" color="#6200ee" />
-                <Text style={{marginTop: 10, color: '#666'}}>Moving dish...</Text>
-            </View>
+            <ActivityIndicator animating={true} size="large" color={theme.colors.primary} />
           ) : (
             <>
-                <Text variant="titleLarge" style={{marginBottom: 15, textAlign:'center'}}>
-                    Move {sourceDay}'s Meal To...
+                <Text variant="titleMedium" style={{ marginBottom: 15, textAlign: 'center', fontWeight: 'bold', color: theme.colors.onSurface }}>
+                   Move {sourceDay}'s {MEAL_TYPES[activeIndex]} to...
                 </Text>
-                <ScrollView style={{maxHeight: 300}} showsVerticalScrollIndicator={false}>
+                <ScrollView style={{ maxHeight: 300 }}>
                     {DAYS.map(day => (
                         <TouchableRipple 
                             key={day} 
                             onPress={() => executeMove(day)}
                             disabled={day === sourceDay}
-                            style={[
-                                styles.modalOption, 
-                                day === sourceDay && {backgroundColor: '#eee', opacity: 0.5} 
-                            ]}
+                            style={[styles.modalOption, { borderBottomColor: theme.colors.surfaceVariant }]}
                         >
-                            <View style={{flexDirection:'row', justifyContent:'space-between', alignItems:'center'}}>
-                                <Text variant="bodyLarge" style={{fontWeight: day === sourceDay ? 'bold' : 'normal'}}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text style={{ color: day === sourceDay ? theme.colors.outline : theme.colors.onSurface }}>
                                     {day}
                                 </Text>
                                 {plans[MEAL_TYPES[activeIndex]]?.[day] && day !== sourceDay && (
-                                    <Text style={{fontSize: 10, color:'orange'}}>Swap ⇄</Text>
+                                    <Text variant="labelSmall" style={{ color: theme.colors.tertiary }}>Swap ⇄</Text>
                                 )}
                             </View>
                         </TouchableRipple>
                     ))}
                 </ScrollView>
-                <Button onPress={() => setMoveModalVisible(false)} style={{marginTop: 10}}>Cancel</Button>
+                <Button mode="text" onPress={() => setMoveModalVisible(false)} style={{ marginTop: 10 }}>Cancel</Button>
             </>
           )}
-
         </Modal>
       </Portal>
 
@@ -399,21 +363,39 @@ export default function PlanScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f9fa' },
-  header: { marginTop: 40, marginBottom: 15, fontWeight: 'bold', paddingLeft: 15 },
-  chipsRow: { flexDirection: 'row', marginBottom: 10, justifyContent: 'center', gap: 10 },
-  chip: { marginRight: 5 },
-  dayRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, padding: 5, borderRadius: 8 },
-  todayRow: { backgroundColor: '#eaddff' },
-  dayLabel: { width: 50, fontWeight: 'bold', fontSize: 16, color: '#555' },
-  card: { flex: 1, marginLeft: 10 },
-  emptyCard: { flex: 1, marginLeft: 10, backgroundColor: 'transparent', borderWidth: 1, borderColor: '#ccc', borderStyle: 'dashed', elevation: 0 },
-  cardContent: { flexDirection: 'row', alignItems: 'center', padding: 5 },
-  emptyContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', padding: 10 },
-  miniImage: { width: 50, height: 50, borderRadius: 8 },
-  textContainer: { marginLeft: 10, flex: 1 },
-  fab: { position: 'absolute', margin: 16, right: 0, bottom: 0, backgroundColor: '#6200ee' },
+  container: { flex: 1 },
+  headerContainer: { paddingHorizontal: 20, marginTop: 50, marginBottom: 10 },
+  segmentContainer: { paddingHorizontal: 16, marginBottom: 5 },
   
-  modal: { backgroundColor: 'white', padding: 20, margin: 20, borderRadius: 10 },
-  modalOption: { paddingVertical: 15, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#eee' },
+  dayRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 12, 
+    // No background here to prevent "Rectangular Box" glitch
+  },
+  dayLabel: { 
+    width: 45, 
+    fontWeight: '700', 
+    fontSize: 14,
+    textAlign: 'center' 
+  },
+  
+  card: { flex: 1, marginLeft: 8, justifyContent: 'center' },
+  cardContent: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingHorizontal: 12 },
+  textContainer: { marginLeft: 12, flex: 1 },
+  
+  emptyCard: { 
+    flex: 1, 
+    marginLeft: 8, 
+    borderStyle: 'dashed', 
+    borderWidth: 1, 
+    backgroundColor: 'transparent',
+    height: 60, // Consistent height
+    justifyContent: 'center'
+  },
+  emptyContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  
+  fab: { position: 'absolute', margin: 16, right: 0, bottom: 20 },
+  modal: { padding: 20, margin: 20, borderRadius: 24 },
+  modalOption: { paddingVertical: 16, borderBottomWidth: 1 },
 });
