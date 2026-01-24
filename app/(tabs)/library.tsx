@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet, FlatList, RefreshControl, Image } from 'react-native';
-import { Text, Searchbar, FAB, List, Divider, useTheme } from 'react-native-paper';
+import { Text, Searchbar, FAB, List, Divider, useTheme ,IconButton} from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -87,19 +87,44 @@ export default function LibraryScreen() {
   return (
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       
-      <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
-        <Text variant="headlineMedium" style={{ fontWeight: '800', marginBottom: 15, color: theme.colors.onSurface }}>
-            Your Library
-        </Text>
+     <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
+        <View style={styles.headerTop}>
+          <View style={{ flex: 1 }}> {/* flex: 1 ensures text doesn't push the icon off-screen */}
+            <Text 
+              variant="headlineLarge" // Changed from displaySmall to headlineLarge (smaller, safer)
+              style={{ fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -1 }}
+              numberOfLines={1} // Prevents pushing layout down
+              adjustsFontSizeToFit // Automatically shrinks text if it's too long
+            >
+              Your <Text style={{ color: theme.colors.primary }}>Library</Text>
+            </Text>
+            
+            <View style={[styles.badge, { backgroundColor: theme.colors.primaryContainer }]}>
+               <Text style={[styles.badgeText, { color: theme.colors.onPrimaryContainer }]}>
+                  {dishes.length} {dishes.length === 1 ? 'RECIPE' : 'RECIPES'}
+               </Text>
+            </View>
+          </View>
+          
+          <IconButton 
+            icon="filter-variant" 
+            mode="contained-tonal"
+            containerColor={theme.colors.surfaceVariant}
+            iconColor={theme.colors.primary}
+            size={22}
+            style={{ margin: 0 }} // Remove default margins that might push it out
+            onPress={() => {}} 
+          />
+        </View>
+
         <Searchbar
-          placeholder="Search your dishes..."
+          placeholder="Search..."
           onChangeText={onChangeSearch}
           value={searchQuery}
           style={[styles.searchBar, { backgroundColor: theme.colors.surfaceVariant }]}
-          inputStyle={{ color: theme.colors.onSurfaceVariant }}
-          iconColor={theme.colors.onSurfaceVariant}
-          placeholderTextColor={theme.colors.outline}
-          elevation={0} // Flat modern look
+          inputStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 14 }}
+          iconColor={theme.colors.primary}
+          elevation={0}
         />
       </View>
 
@@ -155,8 +180,38 @@ export default function LibraryScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { padding: 20, paddingTop: 60, paddingBottom: 10 },
-  searchBar: { borderRadius: 12 },
+  header: { 
+    paddingHorizontal: 16, // Reduced slightly to give more room
+    paddingTop: 60, 
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+    width: '100%', // Ensure it stays within bounds
+  },
+  headerTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center', 
+    marginBottom: 15,
+  },
+  badge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+    marginTop: 2,
+  },
+  badgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  searchBar: { 
+    borderRadius: 12,
+    height: 55,
+    width: '100%', // Force it to respect parent width
+  },
+ 
   listContent: { paddingBottom: 100 },
   listItem: { paddingVertical: 8, paddingHorizontal: 10 },
   thumb: { width: 48, height: 48, borderRadius: 12, marginLeft: 10 },
