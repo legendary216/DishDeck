@@ -1,14 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, ScrollView, Alert, Image, Linking, TouchableOpacity, KeyboardAvoidingView, Platform } from 'react-native';
-import { TextInput, Text, SegmentedButtons, ActivityIndicator, IconButton, Surface, useTheme, Chip, Avatar, Divider, FAB } from 'react-native-paper';
+import { TextInput, Text, SegmentedButtons, ActivityIndicator, IconButton, Surface, useTheme, Chip, Avatar, Divider, FAB, Button } from 'react-native-paper';
 import { useLocalSearchParams, router } from 'expo-router';
 import { supabase } from '../../utils/supabase';
+// Make sure this path matches your project structure
+import { geminiModel } from '../../utils/gemini'; 
 
 export default function DishDetailScreen() {
   const { id } = useLocalSearchParams(); 
   const theme = useTheme();
+  
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false); // <--- NEW STATE
   
   const [name, setName] = useState('');
   const [type, setType] = useState('');
@@ -34,6 +38,37 @@ export default function DishDetailScreen() {
       setYoutubeLink(data.youtube_link);
       setImagePath(data.image_path);
       setLoading(false);
+    }
+  };
+
+  // --- AI GENERATION LOGIC ---
+  const generateAIContent = async () => {
+    if (!name) {
+        Alert.alert("Missing Name", "Please enter a dish name first so AI knows what to cook!");
+        return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const prompt = `List ingredients and steps for "${name}". 
+      Format: INGREDIENTS: (list) RECIPE: (short steps). No intro.`;
+
+      const result = await geminiModel.generateContent(prompt);
+      const text = result.response.text();
+
+      const parts = text.split("RECIPE:");
+      const ingredientsPart = parts[0].replace("INGREDIENTS:", "").trim();
+      const recipePart = parts[1] ? parts[1].trim() : "";
+
+      setIngredients(ingredientsPart);
+      setRecipe(recipePart);
+      Alert.alert("Magic Complete", "Ingredients and Recipe have been generated!");
+      
+    } catch (error) {
+      console.error(error);
+      Alert.alert("AI Error", "Could not generate content. Check your API key or connection.");
+    } finally {
+      setIsGenerating(false);
     }
   };
 
@@ -67,8 +102,7 @@ export default function DishDetailScreen() {
   const openLink = async () => {
     if (!youtubeLink) { Alert.alert("No Link", "No YouTube link added."); return; }
     const url = youtubeLink.trim();
-    const supported = await Linking.canOpenURL(url);
-    if (supported) await Linking.openURL(url);
+    if (await Linking.canOpenURL(url)) await Linking.openURL(url);
     else Alert.alert("Invalid Link", "Cannot open this link.");
   };
 
@@ -80,7 +114,7 @@ export default function DishDetailScreen() {
         style={{ flex: 1, backgroundColor: theme.colors.background }}
     >
       
-      {/* FIXED BACK BUTTON (Always stays on top) */}
+      {/* FIXED BACK BUTTON */}
       <View style={styles.fixedHeaderActions}>
          <IconButton 
             icon="arrow-left" 
@@ -111,11 +145,10 @@ export default function DishDetailScreen() {
 
       <ScrollView 
         showsVerticalScrollIndicator={false}
-        // KEY PROP: Index 1 is the Title Block. It will stick to the top.
         stickyHeaderIndices={[1]} 
       >
           
-          {/* INDEX 0: THE IMAGE (Scrolls Away) */}
+          {/* INDEX 0: IMAGE */}
           <View style={styles.imageContainer}>
              <Image 
                 source={{ uri: imagePath || 'https://via.placeholder.com/400' }} 
@@ -125,12 +158,26 @@ export default function DishDetailScreen() {
              <View style={styles.imageOverlay} />
           </View>
 
-          {/* INDEX 1: THE TITLE (Sticks to Top) */}
+          {/* INDEX 1: STICKY TITLE + AI BUTTON */}
           <View style={[styles.stickyTitleContainer, { backgroundColor: theme.colors.background }]}>
              <View style={styles.sheetHandle} />
              {isEditing ? (
                  <View>
                     <TextInput label="Dish Name" value={name} onChangeText={setName} mode="outlined" style={styles.input} />
+                    
+                    {/* --- NEW: AI BUTTON --- */}
+                    <Button 
+                        mode="elevated" 
+                        icon="sparkles" 
+                        loading={isGenerating} 
+                        onPress={generateAIContent}
+                        style={{ marginBottom: 10, backgroundColor: theme.colors.tertiaryContainer }}
+                        textColor={theme.colors.onTertiaryContainer}
+                    >
+                        {isGenerating ? "Cooking..." : "Auto-fill with AI"}
+                    </Button>
+                    {/* ---------------------- */}
+
                     <SegmentedButtons
                         value={type} onValueChange={setType}
                         buttons={[
@@ -151,11 +198,10 @@ export default function DishDetailScreen() {
                     </Text>
                  </View>
              )}
-             {/* Divider included in sticky header so content slides under it */}
              <Divider style={{ marginTop: 20, height: 1 }} />
           </View>
 
-          {/* INDEX 2: THE CONTENT (Scrolls Under Title) */}
+          {/* INDEX 2: CONTENT */}
           <View style={[styles.contentBody, { backgroundColor: theme.colors.background }]}>
             
             {/* INGREDIENTS */}
@@ -230,13 +276,11 @@ export default function DishDetailScreen() {
                 )}
             </View>
 
-            {/* Extra space for FAB and Keyboard */}
             <View style={{ height: 150 }} />
           </View>
 
       </ScrollView>
 
-      {/* FLOATING SAVE BUTTON */}
       {isEditing && (
         <FAB
             icon="check"
@@ -253,66 +297,36 @@ export default function DishDetailScreen() {
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   
-  // FIXED ACTIONS (Back Button)
   fixedHeaderActions: {
-    position: 'absolute',
-    top: 50, // Safe Area Top
-    left: 10,
-    right: 10,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    zIndex: 999, // Super high zIndex
-    elevation: 10,
+    position: 'absolute', top: 50, left: 10, right: 10,
+    flexDirection: 'row', justifyContent: 'space-between',
+    zIndex: 999, elevation: 10,
   },
-
-  // 1. IMAGE CONTAINER
   imageContainer: {
-    height: 350,
-    width: '100%',
-    zIndex: 0,
+    height: 350, width: '100%', zIndex: 0,
   },
   heroImage: { width: '100%', height: '100%' },
   imageOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.2)', 
+    ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.2)', 
   },
-
-  // 2. STICKY HEADER (The Title)
   stickyTitleContainer: {
-    marginTop: -40, // Pulls it over the image initially
-    paddingHorizontal: 24,
-    paddingTop: 15,
-    paddingBottom: 0,
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
-    zIndex: 10,
-    elevation: 5, // Shadow when sticky
+    marginTop: -40, paddingHorizontal: 24, paddingTop: 15, paddingBottom: 0,
+    borderTopLeftRadius: 32, borderTopRightRadius: 32,
+    zIndex: 10, elevation: 5,
   },
   sheetHandle: {
-    width: 40, height: 4, 
-    backgroundColor: '#E0E0E0', 
-    alignSelf: 'center', 
-    borderRadius: 2, 
-    marginBottom: 15 
+    width: 40, height: 4, backgroundColor: '#E0E0E0', 
+    alignSelf: 'center', borderRadius: 2, marginBottom: 15 
   },
-
-  // 3. CONTENT BODY
   contentBody: {
-    padding: 24,
-    paddingTop: 20,
-    minHeight: 500,
+    padding: 24, paddingTop: 20, minHeight: 500,
   },
-
   sectionBlock: { marginBottom: 25 },
   sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   input: { backgroundColor: 'white', marginBottom: 10 },
   readSurface: { padding: 16, borderRadius: 16, backgroundColor: '#fff' },
   videoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#eee',
+    backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: '#eee',
   },
   fab: { position: 'absolute', margin: 16, right: 0, bottom: 0 },
 });
