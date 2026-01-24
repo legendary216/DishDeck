@@ -1,29 +1,56 @@
 import { MD3LightTheme as DefaultTheme } from 'react-native-paper';
 
-export const theme = {
+// 1. Zest (Orange - Default)
+const OrangeTheme = {
   ...DefaultTheme,
-  // 1. BRAND COLORS (The "Personality")
+  name: 'Zest Orange',
   colors: {
     ...DefaultTheme.colors,
-    primary: '#6200ee',       // Your Main Purple
-    onPrimary: '#FFFFFF',     // Text on top of purple (White)
-    
-    secondary: '#03DAC6',     // Teal Accent (Great for "Success" or "Active")
-    secondaryContainer: '#EADDFF', // Light purple background for active tabs
-    
-    background: '#F8F9FA',    // Light Grey (Better than harsh #FFF)
-    surface: '#FFFFFF',       // Cards remain pure white
-    
-    error: '#B00020',         // Standard Red
-    
-    // Custom Grays for text
-    onSurface: '#121212',     // Almost Black (High Emphasis)
-    onSurfaceVariant: '#757575', // Grey (Medium Emphasis)
+    primary: '#D84315', onPrimary: '#FFFFFF',
+    primaryContainer: '#FFDBcf', onPrimaryContainer: '#3E1C00',
+    secondaryContainer: '#FFDACC', onSecondaryContainer: '#2C1512',
+    background: '#FFF8F6', surfaceVariant: '#F5DED8', outline: '#85736E',
   },
-
-  // 2. SHAPES (The "Feel")
-  roundness: 12, // 12px corners feels modern (Standard is 4px)
-  
-  // 3. TYPOGRAPHY (Optional override)
-  // You can stick to defaults for now, they are good.
 };
+
+// 2. Fresh (Sage Green)
+const GreenTheme = {
+  ...DefaultTheme,
+  name: 'Fresh Sage',
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#2E7D32', onPrimary: '#FFFFFF',
+    primaryContainer: '#B9F6CA', onPrimaryContainer: '#00210B',
+    secondaryContainer: '#D9E7CB', onSecondaryContainer: '#131F0D',
+    background: '#FBFDF9', surfaceVariant: '#DCE5DD', outline: '#72796F',
+  },
+};
+
+// 3. Ocean (Teal Blue)
+const BlueTheme = {
+  ...DefaultTheme,
+  name: 'Ocean Blue',
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#006978', onPrimary: '#FFFFFF',
+    primaryContainer: '#A6EEFF', onPrimaryContainer: '#001F25',
+    secondaryContainer: '#CCE8E6', onSecondaryContainer: '#051F23',
+    background: '#F5FCFF', surfaceVariant: '#DBE4E6', outline: '#70797C',
+  },
+};
+
+// 4. Berry (Crimson Red)
+const RedTheme = {
+  ...DefaultTheme,
+  name: 'Berry Red',
+  colors: {
+    ...DefaultTheme.colors,
+    primary: '#B71C1C', onPrimary: '#FFFFFF',
+    primaryContainer: '#FFDAD6', onPrimaryContainer: '#410002',
+    secondaryContainer: '#FFDAD6', onSecondaryContainer: '#2C1512',
+    background: '#FFF8F7', surfaceVariant: '#F5DDDA', outline: '#857371',
+  },
+};
+
+// Export the list so we can cycle through it
+export const THEMES = [OrangeTheme, GreenTheme, BlueTheme, RedTheme];

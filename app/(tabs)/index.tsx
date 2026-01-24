@@ -1,11 +1,13 @@
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, Image, Alert } from 'react-native';
+import { View, StyleSheet, Image, Alert ,TouchableOpacity,Vibration} from 'react-native';
 import { Text, Appbar, ActivityIndicator, Surface, useTheme, Avatar, Divider, TouchableRipple, IconButton } from 'react-native-paper';
 import { supabase } from '../../utils/supabase';
 import { router, useFocusEffect } from 'expo-router';
 import { usePlan } from '../../context/PlanContext';
+import { useAppTheme } from '../../utils/ThemeContext';
 
 export default function DashboardScreen() {
+  const { cycleTheme } = useAppTheme(); // <--- Use Hook
   const theme = useTheme();
   const [loading, setLoading] = useState(true);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -57,9 +59,16 @@ export default function DashboardScreen() {
     ]);
   };
 
+  const handleTitlePress = () => {
+      cycleTheme();
+      Vibration.vibrate(10); // Haptic feedback
+  };
+
   // --- WIDGET: Meal Row (The Building Block) ---
   const MealRow = ({ label, dish, icon, isToday }: { label: string; dish: any; icon: string, isToday?: boolean }) => {
     const isPlanned = !!dish;
+
+    
     
     return (
       <TouchableRipple 
@@ -111,9 +120,17 @@ export default function DashboardScreen() {
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       
       {/* 1. HEADER (Restored Icons) */}
-      <Appbar.Header style={{ backgroundColor: 'transparent', height: 40, elevation: 0 }}>
-        <Appbar.Content title="DishDeck" titleStyle={{ fontWeight: '900', color: theme.colors.primary, fontSize: 22 }} />
-        
+      <Appbar.Header style={{ backgroundColor: 'transparent', height: 40, elevation: 0 ,marginTop: 10}}>
+     <TouchableOpacity 
+    onPress={handleTitlePress} 
+    activeOpacity={0.6} 
+    style={{ flex: 1, justifyContent: 'center' }} 
+  >
+      <Appbar.Content 
+        title="DishDeck" 
+        titleStyle={{ fontWeight: '900', color: theme.colors.primary, fontSize: 22, marginLeft : 20 }} 
+      />
+  </TouchableOpacity>
         <Appbar.Action icon="cart-outline" onPress={() => router.push('/shop')} iconColor={theme.colors.onSurfaceVariant} />
        
         
