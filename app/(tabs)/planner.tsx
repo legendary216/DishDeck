@@ -21,7 +21,7 @@ export default function PlanScreen() {
   const [loading, setLoading] = useState(true);
   const [isShuffling, setIsShuffling] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
+  const isManualScroll = useRef(false);
   // Move/Swap State
   const [moveModalVisible, setMoveModalVisible] = useState(false);
   const [sourceDay, setSourceDay] = useState<string | null>(null);
@@ -157,20 +157,41 @@ export default function PlanScreen() {
     router.push({ pathname: '/pick-dish', params: { day, mealType: type } });
   };
 
-  const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const xOffset = event.nativeEvent.contentOffset.x;
-    const index = Math.round(xOffset / SCREEN_WIDTH);
-    if (index !== activeIndex && index >= 0 && index < MEAL_TYPES.length) {
-      setActiveIndex(index);
-    }
-  };
+ const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+  // 1. If we tapped a button, ignore all scroll events until animation stops
+  if (isManualScroll.current) return;
 
-  const handleSegmentChange = (value: string) => {
-    const index = MEAL_TYPES.indexOf(value);
+  const xOffset = event.nativeEvent.contentOffset.x;
+  
+  // 2. Strict Calculation: Only switch if we are 80% of the way to the next screen
+  // This prevents the "jump" back and forth when the list is just 1px off center
+  const index = Math.round(xOffset / SCREEN_WIDTH);
+
+  // 3. Velocity Check: Ensure the offset is a multiple of the screen width 
+  // to avoid flickering during the middle of a swipe
+  const isCentered = Math.abs((xOffset / SCREEN_WIDTH) - index) < 0.1;
+
+  if (isCentered && index !== activeIndex && index >= 0 && index < MEAL_TYPES.length) {
     setActiveIndex(index);
-    flatListRef.current?.scrollToIndex({ index, animated: true });
-  };
+  }
+};
+  const handleSegmentChange = (value: string) => {
+  const index = MEAL_TYPES.indexOf(value);
+  if (index === activeIndex) return; // Don't do anything if tapping the same tab
 
+  isManualScroll.current = true;
+  setActiveIndex(index);
+  
+  flatListRef.current?.scrollToIndex({ 
+    index, 
+    animated: true 
+  });
+
+  // Increase to 600ms to ensure the "bounce" at the end of the scroll is ignored
+  setTimeout(() => {
+    isManualScroll.current = false;
+  }, 600); 
+};
   // --- RENDER ROW ---
  const renderDayRow = (day: string, currentType: string) => {
     const dish = plans[currentType]?.[day];
@@ -316,7 +337,7 @@ export default function PlanScreen() {
             pagingEnabled
             showsHorizontalScrollIndicator={false}
             onScroll={handleScroll}
-            scrollEventThrottle={16}
+            scrollEventThrottle={32}
             keyExtractor={(item) => item}
             getItemLayout={(data, index) => (
                 {length: SCREEN_WIDTH, offset: SCREEN_WIDTH * index, index}
