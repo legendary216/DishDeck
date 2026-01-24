@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Platform, Vibration, Pressable } from 'react-native';
 import PagerView from 'react-native-pager-view';
-import { Appbar, TouchableRipple, Text, useTheme } from 'react-native-paper';
+import { Text, useTheme, Surface } from 'react-native-paper';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
 // Keep your screen imports
@@ -9,20 +9,20 @@ import DashboardScreen from './index';
 import PlannerScreen from './planner';
 import LibraryScreen from './library'; 
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-
 export default function TabLayout() {
   const [index, setIndex] = useState(0);
   const pagerRef = useRef<PagerView>(null);
   const theme = useTheme();
 
   const routes = [
-    { key: 0, title: 'Home', icon: 'home', iconOutline: 'home-outline' },
-    { key: 1, title: 'Planner', icon: 'calendar-range', iconOutline: 'calendar-range-outline' },
-    { key: 2, title: 'Library', icon: 'book-multiple', iconOutline: 'book-multiple-outline' },
+    { key: 0, title: 'Home', icon: 'home-variant', iconOutline: 'home-variant-outline' },
+    { key: 1, title: 'Planner', icon: 'calendar-month', iconOutline: 'calendar-month-outline' },
+    { key: 2, title: 'Library', icon: 'bookmark', iconOutline: 'bookmark-outline' },
   ];
 
   const handleTabPress = (i: number) => {
+    // Optional: Subtle vibration (haptic feedback)
+    Vibration.vibrate(10);
     setIndex(i);
     pagerRef.current?.setPage(i);
   };
@@ -32,75 +32,100 @@ export default function TabLayout() {
   };
 
   return (
-    <View style={styles.container}>
-      {/* 1. The Swipeable Content Area */}
+    <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
+      
+      {/* 1. Swipeable Content */}
       <PagerView
         ref={pagerRef}
         style={styles.pagerView}
         initialPage={0}
         onPageSelected={onPageSelected}
-        scrollEnabled={true} 
       >
-        <View key="0" style={styles.page}><DashboardScreen /></View>
-        <View key="1" style={styles.page}><PlannerScreen /></View>
-        <View key="2" style={styles.page}><LibraryScreen /></View>
+        <View key="0"><DashboardScreen /></View>
+        <View key="1"><PlannerScreen /></View>
+        <View key="2"><LibraryScreen /></View>
       </PagerView>
 
-      {/* 2. Custom Bottom Bar (No Black Screen Issues) */}
-      <View style={styles.bottomBar}>
+      {/* 2. Modern Bottom Bar (No Ripple/Shadow) */}
+      <Surface style={[styles.bottomBar, { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.outlineVariant }]} elevation={2}>
         {routes.map((route, i) => {
           const isFocused = index === i;
-          const iconName = isFocused ? route.icon : route.iconOutline;
-          const color = isFocused ? '#6200ee' : '#757575';
+          
+          const activeColor = theme.colors.onSecondaryContainer;
+          const inactiveColor = theme.colors.onSurfaceVariant;
+          const pillColor = isFocused ? theme.colors.secondaryContainer : 'transparent';
 
           return (
-            <TouchableRipple
+            <Pressable
               key={route.key}
               onPress={() => handleTabPress(i)}
               style={styles.tabItem}
-              rippleColor="rgba(98, 0, 238, .1)"
+              android_ripple={null} // explicitly disable android ripple
             >
               <View style={styles.tabContent}>
-                <MaterialCommunityIcons name={iconName as any} size={24} color={color} />
-                <Text style={[styles.tabLabel, { color }]}>{route.title}</Text>
+                {/* The "Pill" Background */}
+                <View style={[styles.iconPill, { backgroundColor: pillColor }]}>
+                    <MaterialCommunityIcons 
+                        name={isFocused ? route.icon : route.iconOutline as any} 
+                        size={24} 
+                        color={isFocused ? activeColor : inactiveColor} 
+                    />
+                </View>
+                
+                {/* Text Label */}
+                <Text 
+                    style={[
+                        styles.tabLabel, 
+                        { 
+                            color: isFocused ? theme.colors.onSurface : inactiveColor,
+                            fontWeight: isFocused ? '700' : '500'
+                        }
+                    ]}
+                >
+                    {route.title}
+                </Text>
               </View>
-            </TouchableRipple>
+            </Pressable>
           );
         })}
-      </View>
+      </Surface>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
-  pagerView: { flex: 1 }, // Takes all available space above the bar
-  page: { flex: 1 },
+  container: { flex: 1 },
+  pagerView: { flex: 1 },
   
   bottomBar: {
     flexDirection: 'row',
-    height: 60, // Fixed height prevents it from growing
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
-    elevation: 8, // Shadow for Android
-    shadowColor: '#000', // Shadow for iOS
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.1,
-    paddingBottom: 5 // Space for home bar
+    height: 80,
+    paddingTop: 12,
+    paddingBottom: Platform.OS === 'ios' ? 20 : 10,
+    borderTopWidth: 0.5,
+    elevation: 0,
   },
+  
   tabItem: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'flex-start',
   },
+  
   tabContent: {
     alignItems: 'center',
-    justifyContent: 'center',
   },
+  
+  iconPill: {
+    width: 64,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  
   tabLabel: {
-    fontSize: 10,
-    marginTop: 4,
-    fontWeight: '600',
+    fontSize: 12,
   }
 });
