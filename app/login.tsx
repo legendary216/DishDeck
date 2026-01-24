@@ -15,6 +15,7 @@ export default function LoginScreen() {
   const [isLoginMode, setIsLoginMode] = useState<boolean>(true);
   const [showOtpModal, setShowOtpModal] = useState<boolean>(false);
   const [timer, setTimer] = useState<number>(0);
+  const [secureText, setSecureText] = useState<boolean>(true);
 
   useEffect(() => {
     let interval: any; 
@@ -47,7 +48,6 @@ export default function LoginScreen() {
       Alert.alert("Auth Error", error.message);
     } else {
       // --- THE "EXISTING USER" FIX ---
-      // data.user exists but identities is empty if the user is already registered
       if (!isLoginMode) {
         if (data.user && data.user.identities && data.user.identities.length === 0) {
           Alert.alert(
@@ -102,43 +102,126 @@ export default function LoginScreen() {
         contentContainerStyle={[styles.container, { backgroundColor: theme.colors.background }]} 
         keyboardShouldPersistTaps="handled"
       >
-       <Text variant="headlineLarge" style={styles.title}>DishDeck</Text>
+        {/* BRAND TITLE WITH COLOR ACCENT */}
+        <Text variant="displaySmall" style={[styles.title, { color: theme.colors.onSurface }]}>
+          Dish<Text style={{ color: theme.colors.primary }}>Deck</Text>
+        </Text>
         <Text style={styles.subtitle}>{isLoginMode ? "Welcome back!" : "Join the kitchen."}</Text>
         
-        <TextInput label="Email" value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" style={styles.input} mode="outlined" />
-        <TextInput label="Password" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} mode="outlined" />
+        {/* INPUT FIELDS WITH ICONS */}
+        <TextInput 
+          label="Email" 
+          value={email} 
+          onChangeText={setEmail} 
+          autoCapitalize="none" 
+          keyboardType="email-address" 
+          style={styles.input} 
+          mode="outlined" 
+          left={<TextInput.Icon icon="email-outline" />}
+        />
+        
+        <TextInput 
+          label="Password" 
+          value={password} 
+          onChangeText={setPassword} 
+          secureTextEntry={secureText} 
+          style={styles.input} 
+          mode="outlined" 
+          left={<TextInput.Icon icon="lock-outline" />}
+          right={<TextInput.Icon icon={secureText ? "eye-off" : "eye"} onPress={() => setSecureText(!secureText)} />}
+        />
 
         {!isLoginMode && (
-          <TextInput label="Confirm Password" value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry style={styles.input} mode="outlined" />
+          <TextInput 
+            label="Confirm Password" 
+            value={confirmPassword} 
+            onChangeText={setConfirmPassword} 
+            secureTextEntry 
+            style={styles.input} 
+            mode="outlined" 
+            left={<TextInput.Icon icon="shield-check-outline" />}
+          />
         )}
 
-        <Button mode="contained" onPress={handleAuth} loading={loading} style={styles.button}>
+        <Button 
+          mode="contained" 
+          onPress={handleAuth} 
+          loading={loading} 
+          style={styles.button}
+          contentStyle={{ height: 48 }}
+        >
           {isLoginMode ? "Login" : "Create Account"}
         </Button>
-        <Button mode="text" onPress={() => setIsLoginMode(!isLoginMode)} style={{ marginTop: 10 }}>
+
+        <Button 
+          mode="text" 
+          onPress={() => setIsLoginMode(!isLoginMode)} 
+          style={{ marginTop: 12 }}
+        >
           {isLoginMode ? "New here? Sign Up" : "Already have an account? Log In"}
         </Button>
 
+        {/* VERIFICATION MODAL */}
         <Portal>
           <Modal 
             visible={showOtpModal} 
             onDismiss={() => setShowOtpModal(false)}
             contentContainerStyle={[styles.modal, { backgroundColor: theme.colors.surface }]}
           >
-            {/* KEYBOARD FIX: Added keyboardVerticalOffset specifically for the modal view */}
-            <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 40 : 0}>
+            <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}>
               <ScrollView bounces={false} contentContainerStyle={{ alignItems: 'center' }}>
-                <Avatar.Icon size={60} icon="numeric-8-box-outline" style={{ marginBottom: 15 }} />
-                <Text variant="headlineSmall" style={styles.modalTitle}>Verify Email</Text>
-                <Text style={styles.modalText}>Enter 8-digit code for {email}</Text>
+                <Avatar.Icon 
+                  size={64} 
+                  icon="shield-check-outline" 
+                  style={{ marginBottom: 20, backgroundColor: theme.colors.primaryContainer }} 
+                  color={theme.colors.primary}
+                />
+                
+                <Text style={styles.modalTitle}>Confirm Email</Text>
+                
+                <Text style={styles.modalText}>
+                  Enter the 8-digit code sent to{"\n"}
+                  <Text style={{ color: theme.colors.primary, fontWeight: '700' }}>{email}</Text>
+                </Text>
 
-                <TextInput label="8-Digit Code" value={otpCode} onChangeText={setOtpCode} keyboardType="number-pad" maxLength={8} style={{ width: '100%', marginBottom: 20 }} mode="outlined" />
+                <TextInput 
+                  label="Verification Code" 
+                  value={otpCode} 
+                  onChangeText={setOtpCode} 
+                  keyboardType="number-pad" 
+                  maxLength={8} 
+                  style={{ width: '100%', marginBottom: 24 }} 
+                  mode="outlined" 
+                  autoFocus
+                />
 
-                <Button mode="contained" onPress={handleVerifyOTP} loading={loading} style={{ width: '100%' }}>Verify & Go to Login</Button>
-                <Button mode="text" onPress={handleResendOTP} disabled={timer > 0 || loading}>
-                  {timer > 0 ? `Resend in ${timer}s` : "Resend Code"}
+                <Button 
+                  mode="contained" 
+                  onPress={handleVerifyOTP} 
+                  loading={loading} 
+                  style={{ width: '100%', borderRadius: 12 }}
+                >
+                  Verify Account
                 </Button>
-                <Button mode="text" onPress={() => setShowOtpModal(false)}>Cancel</Button>
+
+                <View style={{ marginTop: 16, alignItems: 'center' }}>
+                  <Button 
+                    mode="text" 
+                    onPress={handleResendOTP} 
+                    disabled={timer > 0 || loading}
+                    textColor={timer > 0 ? theme.colors.outline : theme.colors.primary}
+                  >
+                    {timer > 0 ? `Resend in ${timer}s` : "Resend Code"}
+                  </Button>
+
+                  <Button 
+                    mode="text" 
+                    onPress={() => setShowOtpModal(false)} 
+                    textColor={theme.colors.error}
+                  >
+                    Cancel
+                  </Button>
+                </View>
               </ScrollView>
             </KeyboardAvoidingView>
           </Modal>
@@ -149,12 +232,49 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 24, justifyContent: 'center' },
-  title: { fontSize: 40, fontWeight: '900', textAlign: 'center', marginBottom: 5 },
-  subtitle: { textAlign: 'center', marginBottom: 35, opacity: 0.6 },
-  input: { marginBottom: 16 },
-  button: { paddingVertical: 6, borderRadius: 12 },
-  modal: { padding: 25, margin: 20, borderRadius: 28, maxHeight: '80%',marginBottom: 200 },
-  modalTitle: { fontWeight: '800', marginBottom: 10 },
-  modalText: { textAlign: 'center', marginBottom: 20, opacity: 0.7 }
+  container: { 
+    flexGrow: 1, 
+    padding: 28, 
+    justifyContent: 'center' 
+  },
+  title: { 
+    fontSize: 42, 
+    fontWeight: '900', 
+    textAlign: 'center', 
+    letterSpacing: -2, 
+    marginBottom: 8 
+  },
+  subtitle: { 
+    textAlign: 'center', 
+    marginBottom: 40, 
+    opacity: 0.5, 
+    fontSize: 16,
+    letterSpacing: 0.5 
+  },
+  input: { 
+    marginBottom: 16, 
+    backgroundColor: 'transparent' 
+  },
+  button: { 
+    borderRadius: 14, 
+    marginTop: 10
+  },
+  modal: { 
+    padding: 24, 
+    margin: 20, 
+    borderRadius: 32, 
+    marginTop: -200 // Shifts it up to clear keyboard
+  },
+  modalTitle: { 
+    fontWeight: '900', 
+    fontSize: 24,
+    marginBottom: 4, 
+    textAlign: 'center'
+  },
+  modalText: { 
+    textAlign: 'center', 
+    marginBottom: 24, 
+    opacity: 0.6, 
+    lineHeight: 20 
+  }
 });
