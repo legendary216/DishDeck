@@ -65,7 +65,9 @@ export default function DishDetailScreen() {
       (list with bullets)
       RECIPE:
       (numbered steps)
-      No intro text.`;
+      No intro text.
+      
+      also is the item is not edible create a funny response or say it is not edible`;
 
       const result = await geminiModel.generateContent(prompt);
       const text = result.response.text();
