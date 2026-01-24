@@ -176,16 +176,30 @@ export default function ShoppingScreen() {
       
       {/* Header */}
       <View style={[styles.header, { backgroundColor: theme.colors.surface }]}>
-        <Text variant="headlineMedium" style={{ fontWeight: '800', color: theme.colors.onSurface }}>
-            Shopping List
-        </Text>
-        
-        {isClearing ? (
-            <ActivityIndicator animating={true} color={theme.colors.error} size="small" />
-        ) : (
-            <IconButton icon="delete-outline" iconColor={theme.colors.error} onPress={clearList} />
-        )}
-      </View>
+  <View>
+    <Text variant="displaySmall" style={{ fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -1 }}>
+      Shopping <Text style={{ color: theme.colors.primary }}>List</Text>
+    </Text>
+    <Text variant="labelMedium" style={{ color: theme.colors.outline, marginTop: 0, letterSpacing: 1 }}>
+      {sections.reduce((acc, s) => acc + s.data.length, 0)} ITEMS TOTAL
+    </Text>
+  </View>
+  
+  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+    {isClearing ? (
+      <ActivityIndicator animating={true} color={theme.colors.error} size="small" style={{ marginRight: 15 }} />
+    ) : (
+      <IconButton 
+        icon="delete-sweep-outline" 
+        mode="contained-tonal"
+        containerColor={theme.colors.errorContainer}
+        iconColor={theme.colors.error} 
+        size={24}
+        onPress={clearList} 
+      />
+    )}
+  </View>
+</View>
 
       {/* Main Spinner */}
       {showMainSpinner && (
@@ -323,22 +337,23 @@ export default function ShoppingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { 
-      paddingHorizontal: 20, 
-      paddingTop: 50, // Matches other screens
-      paddingBottom: 15,
-      flexDirection: 'row', 
-      justifyContent: 'space-between', 
-      alignItems: 'center',
-      elevation: 2 
-  },
-  sectionHeader: { 
-      paddingVertical: 6, 
-      paddingHorizontal: 12, 
-      marginTop: 20, 
-      marginBottom: 5,
-      borderRadius: 8,
-      alignSelf: 'flex-start' // Pill shape
-  },
+  paddingHorizontal: 20, 
+  paddingTop: 60, // Increased for better notch clearance
+  paddingBottom: 20,
+  flexDirection: 'row', 
+  justifyContent: 'space-between', 
+  alignItems: 'flex-end', // Aligns the delete button with the bottom of the title
+  borderBottomWidth: 1,
+  borderBottomColor: 'rgba(0,0,0,0.05)', // Subtle separator
+},
+sectionHeader: { 
+  paddingVertical: 4, 
+  paddingHorizontal: 12, 
+  marginTop: 24, 
+  marginBottom: 8,
+  borderRadius: 20, // More rounded "Pill" look
+  alignSelf: 'flex-start',
+},
   sectionTitle: { 
       fontWeight: '700', 
       fontSize: 14,

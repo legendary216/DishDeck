@@ -94,7 +94,7 @@ export default function PickDish() {
             <View style={styles.triggerRow}>
                 <Avatar.Icon 
                     size={36} 
-                    icon={loading ? "loading" : "sparkles"} 
+                    icon={loading ? "loading" : "auto-fix"} 
                     color={theme.colors.onSurfaceVariant}
                     style={{ backgroundColor: 'rgba(0,0,0,0.05)' }} 
                 />
