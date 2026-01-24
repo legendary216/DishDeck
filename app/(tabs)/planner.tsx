@@ -253,29 +253,60 @@ export default function PlanScreen() {
     );
   };
   return (
+    // --- No changes to imports or state logic ---
+
+  
     <View style={[styles.container, { backgroundColor: theme.colors.background }]}>
       
-      {/* 1. Header */}
+      {/* 1. STYLED HEADER */}
       <View style={styles.headerContainer}>
-        <Text variant="headlineMedium" style={{ fontWeight: '800', color: theme.colors.onSurface }}>
-            Weekly Plan
-        </Text>
+        <View>
+          <Text variant="displaySmall" style={{ fontWeight: '900', color: theme.colors.onSurface, letterSpacing: -1 }}>
+            Weekly <Text style={{ color: theme.colors.primary }}>Plan</Text>
+          </Text>
+          <Text variant="labelMedium" style={{ color: theme.colors.outline, marginTop: -4, letterSpacing: 1 }}>
+            {todayName.toUpperCase()}
+          </Text>
+        </View>
+        <IconButton 
+          icon="calendar-month" 
+          mode="contained-tonal" 
+          containerColor={theme.colors.surfaceVariant}
+          onPress={() => {}} 
+        />
       </View>
 
-      {/* 2. Toggle */}
+      {/* 2. STYLED SEGMENTED BUTTONS */}
       <View style={styles.segmentContainer}>
         <SegmentedButtons
           value={MEAL_TYPES[activeIndex]}
           onValueChange={handleSegmentChange}
           buttons={[
-            { value: 'Breakfast', label: 'Breakfast' },
-            { value: 'Lunch', label: 'Lunch' },
-            { value: 'Dinner', label: 'Dinner' },
+            { 
+              value: 'Breakfast', 
+              label: 'Breakfast',
+              icon: activeIndex === 0 ? 'coffee' : undefined,
+              showSelectedCheck: true 
+            },
+            { 
+              value: 'Lunch', 
+              label: 'Lunch',
+              icon: activeIndex === 1 ? 'food-apple' : undefined,
+              showSelectedCheck: true 
+            },
+            { 
+              value: 'Dinner', 
+              label: 'Dinner',
+              icon: activeIndex === 2 ? 'silverware-variant' : undefined,
+              showSelectedCheck: true 
+            },
           ]}
+          style={styles.segmentedStyle}
           density="medium"
         />
       </View>
 
+      {/* 3. Horizontal Pager (No changes below this point) --- */}
       {/* 3. Horizontal Pager */}
       <View style={{ flex: 1 }}>
           <FlatList
@@ -364,9 +395,21 @@ export default function PlanScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  headerContainer: { paddingHorizontal: 20, marginTop: 50, marginBottom: 10 },
-  segmentContainer: { paddingHorizontal: 16, marginBottom: 5 },
-  
+  headerContainer: { 
+    paddingHorizontal: 20, 
+    marginTop: 50, 
+    marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  segmentContainer: { 
+    paddingHorizontal: 16, 
+    marginBottom: 15 
+  },
+  segmentedStyle: {
+    backgroundColor: 'transparent',
+  },
   dayRow: { 
     flexDirection: 'row', 
     alignItems: 'center', 
@@ -395,7 +438,7 @@ const styles = StyleSheet.create({
   },
   emptyContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   
-  fab: { position: 'absolute', margin: 16, right: 0, bottom: 20 },
+  fab: { position: 'absolute', margin: 16, right: 0, bottom: 6 },
   modal: { padding: 20, margin: 20, borderRadius: 24 },
   modalOption: { paddingVertical: 16, borderBottomWidth: 1 },
 });

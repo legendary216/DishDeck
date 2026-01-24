@@ -149,7 +149,20 @@ export default function DashboardScreen() {
                     <Text variant="bodySmall" style={{ color: theme.colors.outline, fontWeight: '600', letterSpacing: 1 }}>TODAY'S MENU</Text>
                 </View>
                 {/* Visual Eye Candy */}
-                <Avatar.Icon size={40} icon="chef-hat" style={{ backgroundColor: theme.colors.primaryContainer }} color={theme.colors.primary} />
+               <TouchableOpacity 
+        onPress={() => {
+            cycleTheme();
+            Vibration.vibrate(10);
+        }}
+        activeOpacity={0.7}
+    >
+        <Avatar.Icon 
+            size={40} 
+            icon="chef-hat" 
+            style={{ backgroundColor: theme.colors.primaryContainer }} 
+            color={theme.colors.primary} 
+        />
+    </TouchableOpacity>
             </View>
 
             <Surface style={[styles.cardSurface, { backgroundColor: theme.colors.surface }]} elevation={4}>
@@ -167,6 +180,7 @@ export default function DashboardScreen() {
                 <Text variant="titleMedium" style={{ fontWeight: '700', color: theme.colors.onSurfaceVariant }}>
                     Tomorrow
                 </Text>
+                
                 <Text variant="bodyMedium" style={{ color: theme.colors.outline, marginLeft: 8 }}>
                     ({tomorrowName})
                 </Text>
@@ -181,6 +195,7 @@ export default function DashboardScreen() {
                 <MealRow label="Dinner" dish={globalPlans.tomorrow?.dinner} icon="weather-night" />
              </Surface>
         </View>
+       
 
       </View>
     </View>
